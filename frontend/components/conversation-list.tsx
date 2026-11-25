@@ -61,6 +61,9 @@ interface Props {
   matchTotal?: number;
 }
 
+/** Tabs that fold into the header menu on a phone, so the tab row stays one short line. */
+const PHONE_MENU_TABS: ReadonlySet<string> = new Set(["archived", "blocked"]);
+
 const CHANNEL_CHIPS: { value: InboxChannel; label: string; dot?: string }[] = [
   { value: "all", label: "All" },
   { value: "whatsapp", label: "WA", dot: "bg-primary" },
@@ -199,6 +202,16 @@ export function ConversationList(props: Props) {
                     <button onClick={() => { setSelectionMode(true); setSelectedIds(new Set(leads.map(l => l.id))); setMenuOpen(false); }} className="w-full text-left px-4 py-3 md:py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
                       Select all
                     </button>
+                    {/* Phone: Archived and Blocked live here instead of taking a second row of tabs. */}
+                    {tabs.filter((t) => PHONE_MENU_TABS.has(t.id)).map((t) => (
+                      <button
+                        key={t.id}
+                        onClick={() => { onViewChange(t.id); setMenuOpen(false); }}
+                        className="w-full border-t border-slate-100 px-4 py-3 text-left text-[13px] font-medium text-slate-700 hover:bg-slate-50 md:hidden"
+                      >
+                        {t.label}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
@@ -210,7 +223,7 @@ export function ConversationList(props: Props) {
       {/* ── Tabs row ── */}
       <div
         className={cn(
-          "flex shrink-0 flex-wrap items-center gap-2 border-b border-[#e2e8f0] px-4 py-2.5 md:flex-nowrap md:py-0",
+          "flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-[#e2e8f0] px-4 py-2 [scrollbar-width:none] md:gap-2 md:py-0 [&::-webkit-scrollbar]:hidden",
           fullScreen ? "md:gap-4" : "md:justify-between md:gap-2 md:overflow-x-auto"
         )}
         role="tablist"
@@ -224,7 +237,9 @@ export function ConversationList(props: Props) {
               aria-selected={isActive}
               onClick={() => onViewChange(tab.id)}
               className={cn(
-                "relative flex min-h-10 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold transition-colors md:min-h-0 md:rounded-none md:px-0 md:py-3 md:text-[12px]",
+                "relative h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-3 text-[12.5px] font-semibold transition-colors md:flex md:h-auto md:gap-1.5 md:rounded-none md:px-0 md:py-3 md:text-[12px]",
+                // On the Archived / Blocked pages the header menu is not shown, so both stay as tabs there.
+                PHONE_MENU_TABS.has(tab.id) && !isActive && !fullScreen ? "hidden" : "flex",
                 isActive
                   ? "bg-[#0A1528] text-white md:bg-transparent md:text-primary"
                   : "bg-slate-100 text-[#334155] md:bg-transparent md:text-[#64748b] md:hover:text-[#0A1528]"
@@ -233,7 +248,7 @@ export function ConversationList(props: Props) {
               {tab.label}
               {tab.count !== undefined && tab.count > 0 && (
                 <span className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[11px] font-bold md:text-[9px]",
+                  "rounded-full px-1.5 text-[10.5px] font-bold leading-4 md:py-0.5 md:text-[9px]",
                   tab.urgent
                     ? "bg-rose-800 text-white md:bg-red-50 md:text-red-600"
                     : isActive
@@ -267,7 +282,7 @@ export function ConversationList(props: Props) {
     <div className="w-full flex-shrink-0 bg-white flex flex-col h-full z-10 relative">
       {headerAndTabs}
       {/* ── Channel chips: each shows its own count under the current tab and filters ── */}
-      <div className="mx-4 mt-3 flex flex-wrap gap-2 md:gap-1">
+      <div className="mx-4 mt-2 flex flex-wrap gap-1.5 md:mt-3 md:gap-1">
         {CHANNEL_CHIPS.filter((c) => c.value === "all" || c.value === channel || (counts.channels[c.value] ?? 0) > 0).map((chip) => {
           const active = channel === chip.value;
           const n = counts.channels[chip.value];
@@ -277,7 +292,7 @@ export function ConversationList(props: Props) {
               onClick={() => onChannelChange(chip.value)}
               aria-pressed={active}
               className={cn(
-                "inline-flex min-h-10 items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-semibold whitespace-nowrap transition-all md:min-h-0 md:px-2 md:text-[10.5px]",
+                "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold whitespace-nowrap transition-all md:h-auto md:px-2 md:py-1 md:text-[10.5px]",
                 active
                   ? "bg-primary-light text-primary border-primary/30"
                   : "bg-white text-[#334155] border-[#e2e8f0] hover:border-slate-300"
@@ -292,7 +307,7 @@ export function ConversationList(props: Props) {
       </div>
 
       {/* ── Search + Filter ── */}
-      <div className="relative mx-4 mt-2.5 flex gap-2">
+      <div className="relative mx-4 mt-2 flex gap-1.5 md:mt-2.5 md:gap-2">
         <div className="relative flex-1 group">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" />
           <input
@@ -300,7 +315,7 @@ export function ConversationList(props: Props) {
             placeholder="Search name or phone"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="w-full pl-9 pr-16 md:pr-12 py-2 bg-white border border-[#e2e8f0] rounded-xl text-[16px] md:text-[12.5px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all h-11 md:h-9"
+            className="w-full pl-9 pr-16 md:pr-12 py-2 bg-white border border-[#e2e8f0] rounded-xl text-[16px] md:text-[12.5px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all h-10 md:h-9"
           />
           {searchQuery && (
             <button onClick={() => onSearchChange("")} aria-label="Clear search" className="absolute right-10 md:right-7 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1.5 md:p-0.5 rounded-full hover:bg-slate-100 transition-colors">
@@ -322,17 +337,18 @@ export function ConversationList(props: Props) {
           data-filter-trigger
           onClick={() => setFilterOpen((o) => !o)}
           aria-expanded={filterOpen}
+          aria-label={filterCount > 0 ? `Filter, ${filterCount} on` : "Filter"}
           className={cn(
-            "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-xl border px-3 text-[12.5px] md:h-9 font-semibold transition-colors",
+            "relative inline-flex h-10 w-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border text-[12.5px] font-semibold transition-colors md:h-9 md:w-auto md:px-3",
             filterCount > 0 || filterOpen
               ? "border-primary/40 bg-primary-light text-primary"
               : "border-[#e2e8f0] bg-white text-[#334155] hover:border-slate-300"
           )}
         >
-          <SlidersHorizontal size={14} />
-          Filter
+          <SlidersHorizontal size={14} aria-hidden />
+          <span className="sr-only md:not-sr-only">Filter</span>
           {filterCount > 0 && (
-            <span className="rounded-full bg-primary px-1.5 py-px text-[10px] font-bold leading-4 text-white">{filterCount}</span>
+            <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1.5 py-px text-[10px] font-bold leading-4 text-white md:static">{filterCount}</span>
           )}
         </button>
         <ChatFilterPopover

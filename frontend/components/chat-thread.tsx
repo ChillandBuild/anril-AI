@@ -948,7 +948,8 @@ export function ChatThread({
       {/* Input area */}
       <div className="shrink-0 border-t border-[#e2e8f0] bg-white px-3 pt-2 pb-3 md:px-5 md:pt-3 md:pb-4">
         {!current.blocked_at && outsideWindow && isWhatsApp && (
-          <div className="mb-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800">
+          // Phone: the locked box below already says "Reply window closed · Send template", so this note is desktop-only.
+          <div className="mb-2 hidden items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 md:flex">
             <AlertTriangle size={13} className="mt-0.5 shrink-0" />
             <p className="font-label text-[11px] leading-snug">
               Outside 24-hour window{lastInbound ? ` (last inbound ${Math.round(hoursSinceInbound)}h ago)` : ""}. Only approved templates go through reliably.
@@ -962,7 +963,7 @@ export function ChatThread({
           <button
             type="button"
             onClick={() => setTemplateModalOpen(true)}
-            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-[52px] max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-1 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
+            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-11 max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
             title="Send an approved WhatsApp template (works any time)"
           >
             <FileText size={13} />
@@ -971,7 +972,7 @@ export function ChatThread({
 
           <ShareProductMenu
             leadId={current.id}
-            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-[52px] max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-1 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
+            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-11 max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
             disabledReason={outsideWindow ? "WhatsApp only delivers this within 24 hours of the customer's last message. Send a template instead." : null}
             onSent={() => void pollMessages()}
           />
@@ -980,7 +981,7 @@ export function ChatThread({
             <button
               type="button"
               onClick={() => setPaymentDealOpen(true)}
-              className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-[52px] max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-1 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
+              className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-11 max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px]"
               title="Record a payment or send a payment link on WhatsApp"
             >
               <CreditCard size={13} />
@@ -992,7 +993,7 @@ export function ChatThread({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={!canSendMedia}
-            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-[52px] max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-1 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px] disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-lg bg-[#f1f5f9] py-1.5 font-semibold text-[#334155] hover:bg-[#e2e8f0] flex items-center transition-colors max-md:min-h-11 max-md:min-w-0 max-md:flex-1 max-md:flex-col max-md:justify-center max-md:gap-0.5 max-md:px-1 max-md:text-[11px] max-md:leading-tight md:gap-1.5 md:px-2.5 md:text-[11.5px] disabled:cursor-not-allowed disabled:opacity-50"
             title={canSendMedia ? "Attach a file" : "Turn AI replies off to send a file yourself"}
           >
             <Paperclip size={13} />

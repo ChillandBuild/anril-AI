@@ -70,8 +70,8 @@ export function MoreClient() {
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col gap-5">
-      <label className="flex min-h-12 items-center gap-2.5 rounded-2xl border border-border bg-white px-4 text-ink-muted focus-within:border-primary-300">
-        <Search size={20} aria-hidden className="shrink-0" />
+      <label className="flex h-10 items-center gap-2 rounded-xl border border-border bg-white px-3.5 text-ink-muted focus-within:border-primary-300">
+        <Search size={16} aria-hidden className="shrink-0" />
         <span className="sr-only">Find a page</span>
         <input
           type="search"
@@ -85,7 +85,7 @@ export function MoreClient() {
             type="button"
             onClick={() => setQuery("")}
             aria-label="Clear search"
-            className="-mr-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-surface-mid"
+            className="-mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full hover:bg-surface-mid"
           >
             <X size={18} aria-hidden />
           </button>

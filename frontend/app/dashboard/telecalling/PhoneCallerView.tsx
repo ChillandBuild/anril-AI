@@ -270,12 +270,12 @@ export default function PhoneCallerView({
             role="tab"
             aria-selected={group === id}
             onClick={() => setGroup(id)}
-            className={`flex min-h-[44px] min-w-0 flex-col items-center justify-center rounded-xl px-1 font-label leading-tight transition ${
+            className={`flex h-10 min-w-0 flex-col items-center justify-center rounded-xl px-1 font-label leading-tight transition ${
               group === id ? "bg-white text-primary-900 shadow-sm" : "text-ink-secondary"
             }`}
           >
-            <span className="max-w-full truncate text-[13px] font-bold">{label}</span>
-            <span className="text-[11px] font-semibold opacity-80">{count(n)}</span>
+            <span className="max-w-full truncate text-[12.5px] font-bold">{label}</span>
+            <span className="text-[10.5px] font-semibold opacity-80">{count(n)}</span>
           </button>
         ))}
       </div>
@@ -292,7 +292,7 @@ export default function PhoneCallerView({
             aria-pressed={group === id}
             aria-label={id === "dialer" ? "Dial a number" : "Recent calls"}
             onClick={() => setGroup(group === id ? "queue" : id)}
-            className={`flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-xl border px-2 font-label text-xs font-bold ${
+            className={`flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-xl border px-2 font-label text-xs font-bold ${
               group === id ? "border-navy bg-navy text-white" : "border-border bg-white text-ink"
             }`}
           >
@@ -305,7 +305,7 @@ export default function PhoneCallerView({
           onClick={onExportCsv}
           disabled={exporting || allLeads.length === 0}
           aria-label="Export your leads as CSV"
-          className="flex min-h-[44px] min-w-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-white px-2 font-label text-xs font-bold text-ink disabled:opacity-50"
+          className="flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-xl border border-border bg-white px-2 font-label text-xs font-bold text-ink disabled:opacity-50"
         >
           {exporting ? <RefreshCw size={15} className="shrink-0 animate-spin" aria-hidden /> : <Download size={15} className="shrink-0" aria-hidden />}
           <span className="truncate">Export</span>
@@ -329,7 +329,7 @@ export default function PhoneCallerView({
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search name or phone"
-          className="min-h-[44px] w-full rounded-xl border border-border bg-white pl-10 pr-3 font-body text-base text-ink focus:outline-none focus:ring-2 focus:ring-primary"
+          className="h-10 w-full rounded-xl border border-border bg-white pl-10 pr-3 font-body text-base text-ink focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 

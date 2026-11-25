@@ -270,17 +270,17 @@ function LeadStatCard({ emoji, label, value, hint, tone = "default", onClick, ac
   title?: string;
 }) {
   const className = cn(
-    "flex min-w-0 flex-col items-start gap-1 rounded-2xl border bg-white px-3 py-3 text-left sm:px-5 sm:py-4",
+    "flex min-w-0 flex-col items-start gap-0.5 rounded-2xl border bg-white px-3 py-2.5 text-left sm:gap-1 sm:px-5 sm:py-4",
     active ? "border-primary bg-primary/5 ring-2 ring-primary/15" : "border-[#e2e8f0]",
   );
   const body = (
     <>
-      <div className="flex min-w-0 max-w-full items-center gap-1.5 text-sm font-semibold text-[#334155]">
-        <span aria-hidden className="text-base leading-none">{emoji}</span>
+      <div className="flex min-w-0 max-w-full items-center gap-1.5 text-xs font-semibold text-[#334155] sm:text-sm">
+        <span aria-hidden className="text-sm leading-none sm:text-base">{emoji}</span>
         <span className="truncate">{label}</span>
       </div>
-      <div className={cn("max-w-full font-display text-xl font-bold max-sm:truncate sm:text-3xl", STAT_TONES[tone])}>{value}</div>
-      <div className="max-w-full text-xs text-[#64748b] max-sm:truncate">{hint}</div>
+      <div className={cn("max-w-full font-display text-lg font-bold max-sm:truncate sm:text-3xl", STAT_TONES[tone])}>{value}</div>
+      <div className="max-w-full text-xs text-[#64748b] max-sm:hidden">{hint}</div>
     </>
   );
   if (!onClick) return <div className={className}>{body}</div>;
@@ -1004,7 +1004,7 @@ export function LeadsClient() {
       {headerView === "people" && pageView === "leads" && (
         <div className="space-y-4">
           {/* Customer summary cards: they follow the same filters as the table below. */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-5">
             <LeadStatCard
               emoji="👥"
               label="People"
@@ -1058,20 +1058,20 @@ export function LeadsClient() {
           {/* Main card with filters and table */}
           <div className="rounded-2xl border border-[#e2e8f0] bg-white shadow-sm">
             {/* Phone: a big search box and wrapping interest chips. The filter bar below stays for everything else. */}
-            <div className="space-y-3 border-b border-[#e2e8f0] p-3 md:hidden">
+            <div className="space-y-2 border-b border-[#e2e8f0] p-3 md:hidden">
               <label className="relative block">
                 <span className="sr-only">Search customers</span>
-                <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-muted" />
+                <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" />
                 <input
                   type="search"
                   inputMode="search"
                   placeholder="Name, phone or what they asked for"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className="min-h-[48px] w-full rounded-2xl border border-border bg-white pl-11 pr-4 font-body text-base text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-primary/25"
+                  className="h-10 w-full rounded-xl border border-border bg-white pl-10 pr-3 font-body text-base text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-primary/25"
                 />
               </label>
-              <div className="flex flex-wrap gap-2" role="group" aria-label="Interest">
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Interest">
                 {PHONE_CHIPS.map((chip) => {
                   const on = status === chip.key;
                   return (
@@ -1081,7 +1081,7 @@ export function LeadsClient() {
                       aria-pressed={on}
                       onClick={() => setStatus(chip.key)}
                       className={cn(
-                        "min-h-11 rounded-full px-4 font-label text-sm font-bold transition-colors",
+                        "h-8 rounded-full px-3 font-label text-[12.5px] font-bold transition-colors",
                         on ? "bg-navy text-white" : "bg-surface-mid text-ink-secondary",
                       )}
                     >
@@ -1094,11 +1094,11 @@ export function LeadsClient() {
                   aria-expanded={phoneFiltersOpen}
                   onClick={() => setPhoneFiltersOpen((open) => !open)}
                   className={cn(
-                    "ml-auto flex min-h-11 items-center gap-1.5 rounded-full border px-4 font-label text-sm font-bold",
+                    "ml-auto flex h-8 items-center gap-1 rounded-full border px-3 font-label text-[12.5px] font-bold",
                     phoneFiltersOpen ? "border-navy bg-navy text-white" : "border-border bg-white text-ink",
                   )}
                 >
-                  <SlidersHorizontal size={16} aria-hidden="true" />
+                  <SlidersHorizontal size={14} aria-hidden="true" />
                   {phoneFiltersOpen ? "Hide filters" : "Filters"}
                 </button>
               </div>
