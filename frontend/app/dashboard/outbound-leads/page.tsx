@@ -3540,82 +3540,90 @@ export default function OutboundLeadsPage() {
               </div>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
-              {optedOutPages.pageItems.map((lead) => {
-                const key = `${lead.lead_id}:${lead.tag_id ?? ""}`;
-                const who = lead.name || lead.phone || "Customer";
-                const initials = (lead.name || "").trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
-                const how = (lead.source && STOP_HOW[lead.source]) || "Said stop";
-                return (
-                  <div key={key} className="group flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 transition-colors hover:bg-gray-50/70 md:px-6 xl:flex-nowrap">
-                    {/* Who */}
-                    <div className="flex min-w-0 items-center gap-2.5 xl:w-[260px] xl:shrink-0">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-50 font-label text-[11px] font-bold text-orange-700 ring-1 ring-orange-100">
-                        {initials || <Users size={13} />}
-                      </div>
-                      <div className="min-w-0 leading-tight">
-                        <p className="truncate font-display text-sm font-semibold text-gray-900">{who}</p>
-                        {lead.name && lead.phone && <p className="font-body text-[11px] tabular-nums text-gray-500">{lead.phone}</p>}
-                      </div>
-                    </div>
-
-                    {/* What they stopped */}
-                    <div className="shrink-0 xl:w-[140px]">
-                      <span
-                        title={lead.scope === "global" ? "No campaign is sent to them, whatever the tag." : "Only campaigns under this tag skip them."}
-                        className={cn(
-                          "inline-block max-w-full truncate rounded-full border px-2 py-0.5 align-middle font-label text-[11px] font-semibold whitespace-nowrap",
-                          lead.scope === "global" ? "border-red-100 bg-red-50 text-red-700" : "border-primary-100 bg-primary-50 text-primary-700"
-                        )}
-                      >
-                        {lead.scope === "global" ? "All broadcasts" : `Only ${lead.tag_name || "one tag"}`}
-                      </span>
-                    </div>
-
-                    {/* How, and on which campaign */}
-                    <div className="flex min-w-0 flex-1 items-center gap-1.5 font-body text-xs text-gray-600">
-                      <span className="shrink-0 font-semibold text-gray-700">{how}</span>
-                      {lead.last_campaign && (
-                        <>
-                          <span className="shrink-0 text-gray-300">·</span>
-                          <Send size={11} className="shrink-0 text-gray-400" />
-                          <span className="truncate" title={lead.last_campaign}>{lead.last_campaign}</span>
-                          {lead.last_campaign_at && (
-                            <span className="shrink-0 text-gray-400">sent {istDate(lead.last_campaign_at)}</span>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[880px]">
+                <thead>
+                  <tr className="border-b border-[#f1f5f9]">
+                    <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap">Name</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap">Stopped from</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap">How</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap">Last broadcast</th>
+                    <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap">Said stop on</th>
+                    <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {optedOutPages.pageItems.map((lead) => {
+                    const key = `${lead.lead_id}:${lead.tag_id ?? ""}`;
+                    const who = lead.name || lead.phone || "Customer";
+                    const initials = (lead.name || "").trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+                    const how = (lead.source && STOP_HOW[lead.source]) || "Said stop";
+                    return (
+                      <tr key={key} className="border-t border-[#f1f5f9] transition-colors hover:bg-[#f8fafc]">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-100 text-[11px] font-bold text-orange-700">
+                              {initials || <Users size={15} aria-hidden="true" />}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="whitespace-nowrap text-sm font-bold text-[#0A1528]">{who}</div>
+                              {lead.name && lead.phone && (
+                                <div className="whitespace-nowrap text-xs tabular-nums text-[#64748b]">{lead.phone}</div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            title={lead.scope === "global" ? "No campaign is sent to them, whatever the tag." : "Only campaigns under this tag skip them."}
+                            className={cn(
+                              "inline-block max-w-[160px] truncate rounded-full border px-2 py-0.5 align-middle text-[11px] font-semibold whitespace-nowrap",
+                              lead.scope === "global" ? "border-red-100 bg-red-50 text-red-700" : "border-primary-100 bg-primary-50 text-primary-700"
+                            )}
+                          >
+                            {lead.scope === "global" ? "All broadcasts" : `Only ${lead.tag_name || "one tag"}`}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-[#334155]">{how}</td>
+                        <td className="max-w-[280px] px-4 py-3">
+                          {lead.last_campaign ? (
+                            <>
+                              <div className="truncate text-sm text-[#334155]" title={lead.last_campaign}>{lead.last_campaign}</div>
+                              {lead.last_campaign_at && (
+                                <div className="whitespace-nowrap text-xs text-[#64748b]">Sent {istDate(lead.last_campaign_at)}</div>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-sm text-[#94a3b8]">—</span>
                           )}
-                        </>
-                      )}
-                    </div>
-
-                    {/* When they stopped */}
-                    {lead.opted_out_at && (
-                      <span className="inline-flex shrink-0 items-center gap-1 font-body text-xs tabular-nums text-gray-500 whitespace-nowrap" title="When they said stop">
-                        <Clock size={11} className="text-gray-400" />
-                        {istDateTime(lead.opted_out_at)}
-                      </span>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex shrink-0 items-center gap-1.5 xl:ml-2">
-                      <Link
-                        href={`/dashboard/conversations?lead=${encodeURIComponent(lead.lead_id)}`}
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 font-label text-[11px] font-semibold text-gray-700 transition-colors hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700"
-                      >
-                        <MessageSquare size={12} /> Open chat
-                      </Link>
-                      {canManageOutbound && (
-                        <button
-                          onClick={() => reactivateOptedOut(lead)}
-                          disabled={reactivatingId === key}
-                          className="inline-flex h-8 items-center rounded-lg border border-gray-200 bg-white px-3 font-label text-[11px] font-semibold text-gray-700 transition-colors hover:border-green-200 hover:bg-green-50 hover:text-green-700 disabled:opacity-50"
-                        >
-                          {reactivatingId === key ? "Reactivating…" : "Reactivate"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-xs tabular-nums text-[#64748b]">
+                          {lead.opted_out_at ? istDateTime(lead.opted_out_at) : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Link
+                              href={`/dashboard/conversations?lead=${encodeURIComponent(lead.lead_id)}`}
+                              className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-700 transition-colors hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700"
+                            >
+                              <MessageSquare size={12} /> Open chat
+                            </Link>
+                            {canManageOutbound && (
+                              <button
+                                onClick={() => reactivateOptedOut(lead)}
+                                disabled={reactivatingId === key}
+                                className="inline-flex h-8 items-center whitespace-nowrap rounded-lg border border-gray-200 bg-white px-3 text-[11px] font-semibold text-gray-700 transition-colors hover:border-green-200 hover:bg-green-50 hover:text-green-700 disabled:opacity-50"
+                              >
+                                {reactivatingId === key ? "Reactivating…" : "Reactivate"}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
           <Pagination page={optedOutPages.page} total={optedOutPages.total} onPageChange={optedOutPages.setPage} noun="people" />
