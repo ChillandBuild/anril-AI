@@ -3,6 +3,7 @@ download (Download lists rule + Activity log). DB = FakeSupabase."""
 import csv
 import io
 import sys
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +16,7 @@ from fastapi.testclient import TestClient
 from app.dependencies.auth import get_current_user
 from app.dependencies.tenant import get_tenant_and_role
 from app.main import app
+from app.services.reports_common import IST
 from tests.fake_supabase import FakeSupabase
 
 T1, T2 = "t1", "t2"
@@ -149,7 +151,9 @@ def test_download_reads_past_the_1000_row_cap(env):
 
 
 def test_summary_follows_the_same_people(env):
-    today = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    # India's clock, the one the route's "since India midnight" uses. The fake database compares
+    # timestamps as text, so a UTC stamp read as yesterday between 00:00 and 05:30 IST.
+    today = datetime.now(IST).isoformat()
     event(env.db, "s1", "c-anitha", "l1", when=today)
     event(env.db, "s2", "c-bala", "l2", when=today)
     app.dependency_overrides[get_tenant_and_role] = lambda: OWNER
