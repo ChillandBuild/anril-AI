@@ -105,3 +105,23 @@ def _no_live_blocked_lookup(monkeypatch):
     yield
     blocked_guard.invalidate()
     blocked_guard._number_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_network(monkeypatch):
+    """Tests never leave the machine. A call nobody faked (301 tests on 2026-11-26 read app_settings
+    through the real client) is refused at once, the way an unreachable database fails, with no retry wait: on
+    CI those reads retried against an address that does not exist and the run took 4.5 hours, and
+    on a laptop they reached the live database. test_supabase_retry.py is unaffected: it hands the
+    retry code its own fake transport. Seeing this error in a new test means: fake that call."""
+    import httpx
+
+    def refuse(self, request):
+        raise httpx.ConnectError("tests never reach the network: fake this call", request=request)
+
+    async def refuse_async(self, request):
+        raise httpx.ConnectError("tests never reach the network: fake this call", request=request)
+
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
+    monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", refuse_async)
+    monkeypatch.setattr("app.db.supabase._BACKOFF_SECONDS", 0)
