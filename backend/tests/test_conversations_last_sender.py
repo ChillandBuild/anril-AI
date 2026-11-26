@@ -142,9 +142,9 @@ class FilterTests(unittest.TestCase):
         self.client.get("/api/v1/conversations?folder=blocked")
         self.assertEqual(self.calls[-1]["p_view"], "blocked")
         self.client.get("/api/v1/conversations")
-        self.assertEqual(self.calls[-1]["p_view"], "needs_you")  # the Inbox ordering
+        self.assertEqual(self.calls[-1]["p_view"], "inbox")  # plain newest-first, not waiting-first
         self.client.get("/api/v1/conversations?view=inbox")
-        self.assertEqual(self.calls[-1]["p_view"], "needs_you")
+        self.assertEqual(self.calls[-1]["p_view"], "inbox")
 
     def test_unknown_filter_values_are_rejected_not_ignored(self):
         self.as_role("owner")

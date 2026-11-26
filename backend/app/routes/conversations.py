@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 require_conversations_view = require_permission("conversations.view")
 
-# List tabs on the Chats page. "inbox" is every active chat, the ones waiting on a person
-# first (the SQL function calls that ordering "needs_you"). The "Needs you" tab itself is the
-# handover page (chat_handovers), not this list. Old folder names still work for older clients.
-_VIEW_TO_SQL = {"inbox": "needs_you", "ai_handling": "ai_handling", "archived": "archived", "blocked": "blocked"}
+# List tabs on the Chats page. "inbox" is every active chat, pinned first, then newest first.
+# The "Needs you" tab is the handover page (chat_handovers), not this list. Old folder names
+# still work for older clients.
+_VIEW_TO_SQL = {"inbox": "inbox", "ai_handling": "ai_handling", "archived": "archived", "blocked": "blocked"}
 _FOLDER_TO_VIEW = {"chats": "inbox", "archived": "archived", "blocked": "blocked"}
 
 _CHANNELS = {"whatsapp", "instagram", "facebook", "telegram"}

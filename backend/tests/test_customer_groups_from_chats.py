@@ -91,7 +91,7 @@ class FromChatsTests(unittest.TestCase):
 
     def test_each_tab_maps_to_its_own_sql_view(self):
         self.matches = self._own(1)
-        for tab, sql in (("inbox", "needs_you"), ("ai_handling", "ai_handling"), ("archived", "archived"), ("blocked", "blocked")):
+        for tab, sql in (("inbox", "inbox"), ("ai_handling", "ai_handling"), ("archived", "archived"), ("blocked", "blocked")):
             self.rpc_calls.clear()
             res = self.client.post(URL, json={"name": f"From {tab}", "view": tab})
             self.assertEqual(res.status_code, 200, res.text)

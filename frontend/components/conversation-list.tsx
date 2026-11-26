@@ -72,22 +72,6 @@ const CHANNEL_CHIPS: { value: InboxChannel; label: string; dot?: string }[] = [
   { value: "telegram", label: "TG", dot: "bg-[#229ED9]" },
 ];
 
-const SECTION_TITLE: Record<number, string> = {
-  0: "Needs you · oldest first",
-  1: "Anril is handling",
-  2: "Your team is handling",
-};
-
-/** Hover text for a red time: "Waiting 5 minutes", "Waiting 3 hours", "Waiting 35 days". */
-function waitingTitle(since: string): string {
-  const mins = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 60000));
-  const plural = (n: number, unit: string) => `Waiting ${n} ${unit}${n === 1 ? "" : "s"} for a reply`;
-  if (mins < 60) return plural(Math.max(1, mins), "minute");
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return plural(hours, "hour");
-  return plural(Math.floor(hours / 24), "day");
-}
-
 /** Tab badges stay one short pill so the tab row never has to scroll. */
 function tabCount(n: number): string {
   return n > 999 ? "999+" : n.toLocaleString("en-IN");
@@ -167,7 +151,6 @@ export function ConversationList(props: Props) {
     { id: "archived", label: "Archived" },
     { id: "blocked", label: "Blocked" },
   ];
-  const showSections = view === "inbox";
   const anyNarrowing = Boolean(searchQuery) || filterCount > 0 || channel !== "all";
 
   // The full-width Needs you page keeps its original header and left-aligned tabs; the narrow
@@ -428,34 +411,21 @@ export function ConversationList(props: Props) {
             )}
           </div>
         ) : (
-          leads.map((lead, i) => {
-            const group = lead.inbox_group ?? 1;
-            const prevGroup = i > 0 ? leads[i - 1].inbox_group ?? 1 : null;
+          leads.map((lead) => {
+            // Inbox is a plain newest-first list; only the AI handling tab marks its chats.
+            const aiHandling = view === "ai_handling";
             const isBot = lead.last_message_direction === "outbound" && lead.last_message_is_ai === true;
             const preview = stripMarkdown(lead.last_message_content) || (lead.phone ? formatPhone(lead.phone) : "No messages yet");
-            const needsYou = group === 0;
-            const aiHandling = group === 1;
             const customerWaiting = lead.last_message_direction === "inbound";
-            const waitingSince = needsYou ? lead.waiting_since : null;
             const unread = lead.unread_count ?? 0;
             const wants = lead.wants && (lead.wants.items || lead.wants.total_paise)
               ? [lead.wants.items, lead.wants.total_paise ? formatRupees(lead.wants.total_paise) : ""].filter(Boolean).join(" · ")
               : "";
-            const line2 = needsYou
-              ? `🙋 ${lead.needs_reason || "Waiting for your reply"}`
-              : aiHandling
-                ? customerWaiting ? "🤖 Anril is replying" : `🤖 ${preview}`
-                : `${isBot ? "AI: " : ""}${preview}`;
+            const line2 = aiHandling
+              ? customerWaiting ? "🤖 Anril is replying" : `🤖 ${preview}`
+              : `${isBot ? "AI: " : ""}${preview}`;
             return (
               <Fragment key={lead.id}>
-                {showSections && group !== prevGroup && (
-                  <div className={cn(
-                    "sticky top-0 z-[1] border-b border-[#f1f5f9] bg-white/95 px-4 py-1.5 font-label text-[10px] font-bold uppercase tracking-[0.08em] backdrop-blur",
-                    needsYou ? "text-red-600" : "text-[#64748b]"
-                  )}>
-                    {SECTION_TITLE[group]}
-                  </div>
-                )}
                 {/* Phone row: 46px avatar, name + time, one preview line, chips. Hidden from md up. */}
                 <div
                   onClick={() => onSelect(lead)}
@@ -486,7 +456,7 @@ export function ConversationList(props: Props) {
                         </span>
                         {lead.pinned_at && <Pin size={11} className="shrink-0 fill-current text-amber-500" aria-label="Pinned" />}
                       </span>
-                      <span className={cn("shrink-0 whitespace-nowrap text-[11.5px]", waitingSince || needsYou ? "font-bold text-rose-700" : "text-ink-muted")}>
+                      <span className={cn("shrink-0 whitespace-nowrap text-[11.5px]", "text-ink-muted")}>
                         {formatConvoTime((lead as ConversationLead).last_reply_at || lead.created_at)}
                       </span>
                     </div>
@@ -503,9 +473,6 @@ export function ConversationList(props: Props) {
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-1">
                       <SegmentChip segment={lead.segment} />
-                      {needsYou && (
-                        <span className="inline-flex shrink-0 items-center rounded-full bg-rose-800 px-2 py-0.5 text-[10.5px] font-bold leading-4 text-white">Needs you</span>
-                      )}
                       {aiHandling && (
                         <span className="inline-flex shrink-0 items-center rounded-full bg-primary-light px-2 py-0.5 text-[10.5px] font-bold leading-4 text-primary-900">Anril replying</span>
                       )}
@@ -614,20 +581,17 @@ export function ConversationList(props: Props) {
                           <Pin size={10} className="text-amber-500 fill-current shrink-0" />
                         ) : null}
                       </div>
-                      {/* One format everywhere: when the last message came. Red = the customer is waiting. */}
-                      <span
-                        className={cn("text-[10.5px] whitespace-nowrap", waitingSince ? "font-bold text-red-600" : "text-[#94a3b8]")}
-                        title={waitingSince ? waitingTitle(waitingSince) : undefined}
-                      >
+                      {/* One format everywhere: when the last message came. */}
+                      <span className="text-[10.5px] whitespace-nowrap text-[#94a3b8]">
                         {formatConvoTime((lead as ConversationLead).last_reply_at || lead.created_at)}
                       </span>
                     </div>
 
-                    {/* Line 2: why it needs you / who is handling + unread */}
+                    {/* Line 2: the last message (or who is handling) + unread */}
                     <div className="flex items-center gap-2 mb-1.5">
                       <p className={cn(
                         "min-w-0 flex-1 text-[12px] truncate",
-                        needsYou ? "font-semibold text-amber-800" : unread > 0 ? "font-semibold text-[#0A1528]" : "text-[#64748b]"
+                        unread > 0 ? "font-semibold text-[#0A1528]" : "text-[#64748b]"
                       )}>
                         {line2}
                       </p>
