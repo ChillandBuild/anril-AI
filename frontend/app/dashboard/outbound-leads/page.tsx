@@ -14,7 +14,9 @@ import { cn } from "@/lib/utils";
 import { usePolling } from "@/hooks/usePolling";
 import { useAuthRole } from "../contexts/AuthRoleContext";
 import { Loader2 } from "lucide-react";
-import { TickMark } from "@/components/ui/controls";
+import { CheckTick, TickMark } from "@/components/ui/controls";
+import { downloadCsv, type CsvColumn } from "@/components/chats/exportCsv";
+import { phoneCell } from "@/lib/csvPhone";
 import { Select } from "@/components/ui/Select";
 import { NO_REACH_OFFER, ReachOfferBox, reachOfferPayload, reachOfferProblem, type ReachOfferDraft } from "./ReachOfferBox";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
@@ -1126,6 +1128,29 @@ export default function OutboundLeadsPage() {
   const historyPages = usePagedList(filteredHistory, `${historySearch}|${historyStatusFilter}`);
   const tagPages = usePagedList(filteredTagsList, tagsSearch);
   const optedOutPages = usePagedList(optedOutList);
+  // Ticked rows on the Opted-Out tab, keyed lead_id:tag_id (one person can stop several tags).
+  const [optedOutPicked, setOptedOutPicked] = useState<Set<string>>(new Set());
+  const optOutKey = (l: OptedOutLead) => `${l.lead_id}:${l.tag_id ?? ""}`;
+  const pickedOptedOut = optedOutList.filter((l) => optedOutPicked.has(optOutKey(l)));
+  const pageKeys = optedOutPages.pageItems.map(optOutKey);
+  const pagePickedCount = pageKeys.filter((k) => optedOutPicked.has(k)).length;
+
+  function downloadOptedOutCsv() {
+    const rows = pickedOptedOut.length ? pickedOptedOut : optedOutList;
+    const columns: CsvColumn<OptedOutLead>[] = [
+      { header: "Name", value: (l) => l.name || "" },
+      { header: "Phone", value: (l) => phoneCell(l.phone) },
+      { header: "Stopped from", value: (l) => (l.scope === "global" ? "All broadcasts" : `Only ${l.tag_name || "one tag"}`) },
+      { header: "How", value: (l) => (l.source && STOP_HOW[l.source]) || "Said stop" },
+      { header: "Last broadcast", value: (l) => l.last_campaign || "" },
+      { header: "Broadcast ID", value: (l) => l.last_campaign_id || "" },
+      { header: "Last broadcast sent", value: (l) => (l.last_campaign_at ? istDateTime(l.last_campaign_at) : "") },
+      { header: "Said stop on", value: (l) => (l.opted_out_at ? istDateTime(l.opted_out_at) : "") },
+    ];
+    const day = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    downloadCsv(`opted-out-${day}.csv`, rows, columns);
+    toast.success(`Downloaded ${rows.length.toLocaleString()} ${rows.length === 1 ? "person" : "people"}`);
+  }
 
   // Re-count delivery metrics live from the DB, then refresh the list in place.
   // Silent (no full-list spinner) so cards update without flicker.
@@ -3530,9 +3555,27 @@ export default function OutboundLeadsPage() {
               People who said stop. Campaigns skip them: from all broadcasts, or from one tag only.
             </p>
             {optedOutLoaded && !optedOutError && optedOutList.length > 0 && (
-              <span className="ml-auto shrink-0 rounded-full bg-orange-100/70 px-2 py-0.5 font-label text-[11px] font-semibold text-orange-800">
-                {optedOutList.length.toLocaleString()} {optedOutList.length === 1 ? "person" : "people"}
-              </span>
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                {pickedOptedOut.length > 0 ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-2 py-0.5 font-label text-[11px] font-semibold text-primary-700">
+                    {pickedOptedOut.length.toLocaleString()} selected
+                    <button onClick={() => setOptedOutPicked(new Set())} className="text-primary-700/70 underline-offset-2 hover:text-primary-800 hover:underline">
+                      Clear
+                    </button>
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-orange-100/70 px-2 py-0.5 font-label text-[11px] font-semibold text-orange-800">
+                    {optedOutList.length.toLocaleString()} {optedOutList.length === 1 ? "person" : "people"}
+                  </span>
+                )}
+                <button
+                  onClick={downloadOptedOutCsv}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 font-label text-[11px] font-semibold text-gray-700 transition-colors hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700"
+                >
+                  <Download size={12} />
+                  {pickedOptedOut.length > 0 ? `Download ${pickedOptedOut.length.toLocaleString()}` : "Download all"}
+                </button>
+              </div>
             )}
           </div>
 
@@ -3571,6 +3614,20 @@ export default function OutboundLeadsPage() {
               <table className="w-full min-w-[880px]">
                 <thead>
                   <tr className="border-b border-[#f1f5f9]">
+                    <th className="w-10 px-4 py-3 text-left">
+                      <CheckTick
+                        checked={pageKeys.length > 0 && pagePickedCount === pageKeys.length}
+                        indeterminate={pagePickedCount > 0 && pagePickedCount < pageKeys.length}
+                        onChange={(next) =>
+                          setOptedOutPicked((prev) => {
+                            const n = new Set(prev);
+                            pageKeys.forEach((k) => (next ? n.add(k) : n.delete(k)));
+                            return n;
+                          })
+                        }
+                        aria-label="Select everyone on this page"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap">Name</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap">Stopped from</th>
                     <th className="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-[#64748b] whitespace-nowrap">How</th>
@@ -3586,7 +3643,27 @@ export default function OutboundLeadsPage() {
                     const initials = (lead.name || "").trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
                     const how = (lead.source && STOP_HOW[lead.source]) || "Said stop";
                     return (
-                      <tr key={key} className="border-t border-[#f1f5f9] transition-colors hover:bg-[#f8fafc]">
+                      <tr
+                        key={key}
+                        className={cn(
+                          "border-t border-[#f1f5f9] transition-colors hover:bg-[#f8fafc]",
+                          optedOutPicked.has(key) && "bg-primary-light/60"
+                        )}
+                      >
+                        <td className="px-4 py-3">
+                          <CheckTick
+                            checked={optedOutPicked.has(key)}
+                            onChange={(next) =>
+                              setOptedOutPicked((prev) => {
+                                const n = new Set(prev);
+                                if (next) n.add(key);
+                                else n.delete(key);
+                                return n;
+                              })
+                            }
+                            aria-label={`Select ${who}`}
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2.5">
                             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-100 text-[11px] font-bold text-orange-700">
