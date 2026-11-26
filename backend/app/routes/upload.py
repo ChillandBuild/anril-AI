@@ -1872,27 +1872,74 @@ async def delete_history_entry(
     return {"status": "deleted"}
 
 
+def _last_campaign_before_stop(db, tenant_id: str, leads: list[dict]) -> dict[str, dict]:
+    """lead_id -> {"name", "sent_at"}: the last Reach campaign actually sent to each person at or
+    before the time they stopped. Best effort: an empty dict if anything fails."""
+    stop_at = {r["id"]: r.get("opted_out_at") for r in leads if r.get("id")}
+    if not stop_at:
+        return {}
+    try:
+        rows: list[dict] = []
+        ids = sorted(stop_at)
+        for i in range(0, len(ids), 200):
+            rows += (db.table("broadcast_recipients").select("lead_id,broadcast_id,created_at")
+                     .eq("tenant_id", tenant_id).eq("send_status", "sent")
+                     .in_("lead_id", ids[i:i + 200]).execute()).data or []
+        best: dict[str, dict] = {}
+        for row in rows:
+            lid, at = row.get("lead_id"), row.get("created_at")
+            stop = stop_at.get(lid)
+            if not lid or not at or (stop and at > stop):
+                continue
+            if lid not in best or at > best[lid]["created_at"]:
+                best[lid] = row
+        if not best:
+            return {}
+        names: dict[str, str] = {}
+        bids = sorted({r["broadcast_id"] for r in best.values() if r.get("broadcast_id")})
+        for i in range(0, len(bids), 200):
+            for sb in (db.table("scheduled_broadcasts").select("id,template_name").eq("tenant_id", tenant_id)
+                       .in_("id", bids[i:i + 200]).execute()).data or []:
+                names[sb["id"]] = sb.get("template_name")
+        if len(names) < len(bids):  # immediate sends live only in the saved history
+            row = (db.table("app_settings").select("value").eq("tenant_id", tenant_id)
+                   .eq("key", "broadcast_history").maybe_single().execute())
+            for rec in json.loads((row.data or {}).get("value") or "[]") if row else []:
+                if rec.get("broadcast_id") in bids and rec["broadcast_id"] not in names:
+                    names[rec["broadcast_id"]] = rec.get("template_name")
+        return {lid: {"name": names.get(r.get("broadcast_id")), "sent_at": r["created_at"]} for lid, r in best.items()}
+    except Exception as e:
+        logger.warning("Opted-out list: last-campaign lookup failed: %s", e)
+        return {}
+
+
 @router.get("/opted-out")
 async def list_opted_out_leads(tenant_id: str = Depends(get_tenant_id)):
     """Every lead currently excluded from broadcasts by an opt-out — global (STOP reply,
     account-wide) or per-tag (STOP reply scoped to one product/tag's broadcasts)."""
     db = get_supabase()
 
-    global_rows = (
-        db.table("leads")
-        .select("id,phone,name,opted_out_at")
-        .eq("tenant_id", tenant_id)
-        .eq("opted_out", True)
-        .order("opted_out_at", desc=True)
-        .limit(500)
-        .execute()
-    )
+    def _global(cols: str) -> list[dict]:
+        return (db.table("leads").select(cols).eq("tenant_id", tenant_id).eq("opted_out", True)
+                .order("opted_out_at", desc=True).limit(500).execute()).data or []
+
+    try:
+        global_rows = _global("id,phone,name,opted_out_at,opted_out_source,opted_out_detail")
+    except Exception as e:  # opted_out_source/detail missing (migration 281 not applied)
+        logger.warning("Opted-out list: reading without stop source (%s)", e)
+        global_rows = _global("id,phone,name,opted_out_at")
+    last = _last_campaign_before_stop(db, tenant_id, global_rows)
     global_out = [
         {
             "lead_id": r["id"], "phone": r.get("phone"), "name": r.get("name"),
             "opted_out_at": r.get("opted_out_at"), "scope": "global", "tag_id": None, "tag_name": None,
+            "source": r.get("opted_out_source"),
+            # The campaign they stopped on: the last one sent to them at/before the stop.
+            "last_campaign": (last.get(r["id"]) or {}).get("name")
+            or (r.get("opted_out_detail") if r.get("opted_out_source") == "stop_reply" else None),
+            "last_campaign_at": (last.get(r["id"]) or {}).get("sent_at"),
         }
-        for r in (global_rows.data or [])
+        for r in global_rows
     ]
 
     # Tag names are looked up on their own: lead_tag_opt_outs has no foreign key to broadcast_tags,

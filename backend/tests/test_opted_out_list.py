@@ -36,12 +36,19 @@ class _Q:
         if self.table == "lead_tag_opt_outs" and "broadcast_tags(" in self.cols:
             raise Exception("Could not find a relationship between 'lead_tag_opt_outs' and 'broadcast_tags'")
         if self.table == "leads":
-            return _Res([{"id": "L1", "phone": "+916382546876", "name": "Dinaharan P", "opted_out_at": "2026-11-24T10:15:02+00:00"}])
+            return _Res([{"id": "L1", "phone": "+916382546876", "name": "Dinaharan P", "opted_out_at": "2026-11-24T10:15:02+00:00",
+                          "opted_out_source": "stop_reply", "opted_out_detail": "kelir_host_registration_invitation"}])
         if self.table == "lead_tag_opt_outs":
             return _Res([{"lead_id": "L2", "tag_id": "T1", "opted_out_at": "2026-11-25T10:00:00+00:00",
                           "leads": {"phone": "+919000000000", "name": "Tag Person"}}])
         if self.table == "broadcast_tags":
             return _Res([{"id": "T1", "name": "Hosts"}])
+        if self.table == "broadcast_recipients":  # one campaign before the stop, one after it
+            return _Res([{"lead_id": "L1", "broadcast_id": "B1", "created_at": "2026-11-24T07:55:56+00:00"},
+                         {"lead_id": "L1", "broadcast_id": "B2", "created_at": "2026-11-25T07:00:00+00:00"}])
+        if self.table == "scheduled_broadcasts":
+            return _Res([{"id": "B1", "template_name": "kelir_host_registration_invitation"},
+                         {"id": "B2", "template_name": "later_offer"}])
         return _Res([])
 
 
@@ -57,3 +64,7 @@ def test_opted_out_list_shows_people_who_said_stop(monkeypatch):
         ("Dinaharan P", "global", None),
         ("Tag Person", "tag", "Hosts"),
     ]
+    # The campaign they stopped on is the last one sent BEFORE the stop, not a later one.
+    assert rows[0]["source"] == "stop_reply"
+    assert rows[0]["last_campaign"] == "kelir_host_registration_invitation"
+    assert rows[0]["last_campaign_at"] == "2026-11-24T07:55:56+00:00"

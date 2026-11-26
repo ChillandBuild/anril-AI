@@ -135,7 +135,23 @@ type OptedOutLead = {
   scope: "global" | "tag";
   tag_id: string | null;
   tag_name: string | null;
+  // How they stopped (stop_reply / chat_ai / call / staff), and the last campaign sent to them before it.
+  source?: string | null;
+  last_campaign?: string | null;
+  last_campaign_at?: string | null;
 };
+
+const STOP_HOW: Record<string, string> = {
+  stop_reply: "Replied STOP",
+  chat_ai: "Said no in chat",
+  call: "Asked on a call",
+  staff: "Added by staff",
+};
+
+const istDateTime = (iso: string) =>
+  new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+const istDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" });
 
 type TagStats = {
   tag_id: string;
@@ -3481,17 +3497,16 @@ export default function OutboundLeadsPage() {
 
       {activeTab === "opted-out" && (
         <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-lg">
-          <div className="border-b border-orange-100 bg-gradient-to-r from-orange-50 to-white px-4 py-5 md:px-8">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-100 shadow-sm">
-                <ShieldCheck size={20} className="text-orange-600" />
-              </div>
-              <div>
-                <p className="font-body text-sm text-gray-500">
-                  Excluded from broadcasts by a STOP/unsubscribe reply — globally or for one tag.
-                </p>
-              </div>
-            </div>
+          <div className="flex items-center gap-2 border-b border-orange-100 bg-gradient-to-r from-orange-50/80 to-white px-4 py-2.5 md:px-6">
+            <ShieldCheck size={14} className="shrink-0 text-orange-600" />
+            <p className="font-body text-xs text-gray-500">
+              People who said stop. Campaigns skip them: from all broadcasts, or from one tag only.
+            </p>
+            {optedOutLoaded && !optedOutError && optedOutList.length > 0 && (
+              <span className="ml-auto shrink-0 rounded-full bg-orange-100/70 px-2 py-0.5 font-label text-[11px] font-semibold text-orange-800">
+                {optedOutList.length.toLocaleString()} {optedOutList.length === 1 ? "person" : "people"}
+              </span>
+            )}
           </div>
 
           {optedOutLoading || !optedOutLoaded ? (
@@ -3526,34 +3541,81 @@ export default function OutboundLeadsPage() {
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {optedOutPages.pageItems.map((lead) => (
-                <div key={`${lead.lead_id}:${lead.tag_id ?? ""}`} className="flex flex-wrap items-center gap-3 p-4 md:px-8">
-                  <div className="min-w-[160px]">
-                    <p className="font-display text-sm font-semibold text-gray-900">{lead.name || "—"}</p>
-                    <p className="font-body text-xs text-gray-500">{lead.phone}</p>
+              {optedOutPages.pageItems.map((lead) => {
+                const key = `${lead.lead_id}:${lead.tag_id ?? ""}`;
+                const who = lead.name || lead.phone || "Customer";
+                const initials = (lead.name || "").trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+                const how = (lead.source && STOP_HOW[lead.source]) || "Said stop";
+                return (
+                  <div key={key} className="group flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 transition-colors hover:bg-gray-50/70 md:px-6 xl:flex-nowrap">
+                    {/* Who */}
+                    <div className="flex min-w-0 items-center gap-2.5 xl:w-[260px] xl:shrink-0">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-50 font-label text-[11px] font-bold text-orange-700 ring-1 ring-orange-100">
+                        {initials || <Users size={13} />}
+                      </div>
+                      <div className="min-w-0 leading-tight">
+                        <p className="truncate font-display text-sm font-semibold text-gray-900">{who}</p>
+                        {lead.name && lead.phone && <p className="font-body text-[11px] tabular-nums text-gray-500">{lead.phone}</p>}
+                      </div>
+                    </div>
+
+                    {/* What they stopped */}
+                    <div className="shrink-0 xl:w-[140px]">
+                      <span
+                        title={lead.scope === "global" ? "No campaign is sent to them, whatever the tag." : "Only campaigns under this tag skip them."}
+                        className={cn(
+                          "inline-block max-w-full truncate rounded-full border px-2 py-0.5 align-middle font-label text-[11px] font-semibold whitespace-nowrap",
+                          lead.scope === "global" ? "border-red-100 bg-red-50 text-red-700" : "border-primary-100 bg-primary-50 text-primary-700"
+                        )}
+                      >
+                        {lead.scope === "global" ? "All broadcasts" : `Only ${lead.tag_name || "one tag"}`}
+                      </span>
+                    </div>
+
+                    {/* How, and on which campaign */}
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5 font-body text-xs text-gray-600">
+                      <span className="shrink-0 font-semibold text-gray-700">{how}</span>
+                      {lead.last_campaign && (
+                        <>
+                          <span className="shrink-0 text-gray-300">·</span>
+                          <Send size={11} className="shrink-0 text-gray-400" />
+                          <span className="truncate" title={lead.last_campaign}>{lead.last_campaign}</span>
+                          {lead.last_campaign_at && (
+                            <span className="shrink-0 text-gray-400">sent {istDate(lead.last_campaign_at)}</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    {/* When they stopped */}
+                    {lead.opted_out_at && (
+                      <span className="inline-flex shrink-0 items-center gap-1 font-body text-xs tabular-nums text-gray-500 whitespace-nowrap" title="When they said stop">
+                        <Clock size={11} className="text-gray-400" />
+                        {istDateTime(lead.opted_out_at)}
+                      </span>
+                    )}
+
+                    {/* Actions */}
+                    <div className="flex shrink-0 items-center gap-1.5 xl:ml-2">
+                      <Link
+                        href={`/dashboard/conversations?lead=${encodeURIComponent(lead.lead_id)}`}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 font-label text-[11px] font-semibold text-gray-700 transition-colors hover:border-primary-200 hover:bg-primary-50 hover:text-primary-700"
+                      >
+                        <MessageSquare size={12} /> Open chat
+                      </Link>
+                      {canManageOutbound && (
+                        <button
+                          onClick={() => reactivateOptedOut(lead)}
+                          disabled={reactivatingId === key}
+                          className="inline-flex h-8 items-center rounded-lg border border-gray-200 bg-white px-3 font-label text-[11px] font-semibold text-gray-700 transition-colors hover:border-green-200 hover:bg-green-50 hover:text-green-700 disabled:opacity-50"
+                        >
+                          {reactivatingId === key ? "Reactivating…" : "Reactivate"}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <span className={cn(
-                    "px-2.5 py-1 rounded-full font-label text-[11px] font-semibold border",
-                    lead.scope === "global" ? "bg-red-50 text-red-700 border-red-100" : "bg-primary-50 text-primary-700 border-primary-100"
-                  )}>
-                    {lead.scope === "global" ? "All broadcasts" : lead.tag_name || "Tag"}
-                  </span>
-                  {lead.opted_out_at && (
-                    <span className="font-body text-xs text-gray-400">
-                      {new Date(lead.opted_out_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
-                    </span>
-                  )}
-                  {canManageOutbound && (
-                    <button
-                      onClick={() => reactivateOptedOut(lead)}
-                      disabled={reactivatingId === `${lead.lead_id}:${lead.tag_id ?? ""}`}
-                      className="ml-auto px-3 py-1.5 bg-white hover:bg-green-50 text-gray-700 hover:text-green-700 rounded-lg font-label text-xs font-semibold border border-gray-200 hover:border-green-200 transition-colors disabled:opacity-50"
-                    >
-                      {reactivatingId === `${lead.lead_id}:${lead.tag_id ?? ""}` ? "Reactivating…" : "Reactivate"}
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
           <Pagination page={optedOutPages.page} total={optedOutPages.total} onPageChange={optedOutPages.setPage} noun="people" />
