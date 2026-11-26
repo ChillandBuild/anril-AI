@@ -1907,7 +1907,8 @@ def _last_campaign_before_stop(db, tenant_id: str, leads: list[dict]) -> dict[st
             for rec in json.loads((row.data or {}).get("value") or "[]") if row else []:
                 if rec.get("broadcast_id") in bids and rec["broadcast_id"] not in names:
                     names[rec["broadcast_id"]] = rec.get("template_name")
-        return {lid: {"name": names.get(r.get("broadcast_id")), "sent_at": r["created_at"]} for lid, r in best.items()}
+        return {lid: {"id": r.get("broadcast_id"), "name": names.get(r.get("broadcast_id")), "sent_at": r["created_at"]}
+                for lid, r in best.items()}
     except Exception as e:
         logger.warning("Opted-out list: last-campaign lookup failed: %s", e)
         return {}
@@ -1938,6 +1939,7 @@ async def list_opted_out_leads(tenant_id: str = Depends(get_tenant_id)):
             "last_campaign": (last.get(r["id"]) or {}).get("name")
             or (r.get("opted_out_detail") if r.get("opted_out_source") == "stop_reply" else None),
             "last_campaign_at": (last.get(r["id"]) or {}).get("sent_at"),
+            "last_campaign_id": (last.get(r["id"]) or {}).get("id"),
         }
         for r in global_rows
     ]

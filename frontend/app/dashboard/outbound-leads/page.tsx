@@ -139,6 +139,7 @@ type OptedOutLead = {
   source?: string | null;
   last_campaign?: string | null;
   last_campaign_at?: string | null;
+  last_campaign_id?: string | null;
 };
 
 const STOP_HOW: Record<string, string> = {
@@ -169,6 +170,32 @@ const PRESET_COLORS = [
   "#F97316", "var(--primary-500)", "#1F2937", "#EC4899", "#14B8A6",
   "#6366F1", "#84CC16",
 ];
+
+// Small copy button for a broadcast name or ID. Copies the full value, shows a tick for a moment.
+function CopyValue({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(value);
+          setCopied(true);
+          toast.success(`${label} copied`);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          toast.error("Couldn't copy. Select the text and copy it instead.");
+        }
+      }}
+      title={`Copy ${label.toLowerCase()}`}
+      aria-label={`Copy ${label.toLowerCase()}`}
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md opacity-60 transition hover:bg-black/5 hover:opacity-100"
+    >
+      {copied ? <Check size={11} className="text-green-600" /> : <Copy size={11} />}
+    </button>
+  );
+}
 
 function getTagStyle(hex: string): { background: string; colorClass: string } {
   const hexUpper = (hex || "").toUpperCase();
@@ -3588,9 +3615,21 @@ export default function OutboundLeadsPage() {
                         <td className="max-w-[280px] px-4 py-3">
                           {lead.last_campaign ? (
                             <>
-                              <div className="truncate text-sm text-[#334155]" title={lead.last_campaign}>{lead.last_campaign}</div>
-                              {lead.last_campaign_at && (
-                                <div className="whitespace-nowrap text-xs text-[#64748b]">Sent {istDate(lead.last_campaign_at)}</div>
+                              <div className="flex min-w-0 items-center gap-1 text-sm text-[#334155]">
+                                <span className="truncate" title={lead.last_campaign}>{lead.last_campaign}</span>
+                                <CopyValue value={lead.last_campaign} label="Broadcast name" />
+                              </div>
+                              {(lead.last_campaign_at || lead.last_campaign_id) && (
+                                <div className="flex items-center gap-1 whitespace-nowrap text-xs text-[#64748b]">
+                                  {lead.last_campaign_at && <span>Sent {istDate(lead.last_campaign_at)}</span>}
+                                  {lead.last_campaign_at && lead.last_campaign_id && <span className="text-[#cbd5e1]">·</span>}
+                                  {lead.last_campaign_id && (
+                                    <>
+                                      <span className="font-mono text-[11px]" title={`Broadcast ID: ${lead.last_campaign_id}`}>ID {lead.last_campaign_id.slice(0, 8)}</span>
+                                      <CopyValue value={lead.last_campaign_id} label="Broadcast ID" />
+                                    </>
+                                  )}
+                                </div>
                               )}
                             </>
                           ) : (
@@ -3736,8 +3775,9 @@ export default function OutboundLeadsPage() {
                   </div>
                   
                   {/* Template Badge */}
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-label text-[11px] font-semibold border border-emerald-100 shrink-0 whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-label text-[11px] font-semibold border border-emerald-100 shrink-0 whitespace-nowrap">
                     {item.template_name}
+                    <CopyValue value={item.template_name} label="Broadcast name" />
                   </span>
                   {item.tag_name && (
                     <span className="px-2.5 py-1 rounded-full bg-primary-50 text-primary-700 font-label text-[11px] font-semibold border border-primary-100 shrink-0 whitespace-nowrap">
@@ -3745,8 +3785,9 @@ export default function OutboundLeadsPage() {
                     </span>
                   )}
                   {item.broadcast_id && (
-                    <span className="max-md:hidden px-2.5 py-1 rounded-full bg-gray-50 text-gray-600 font-label text-[10px] font-mono border border-gray-200 shrink-0 whitespace-nowrap" title={`Broadcast ID: ${item.broadcast_id}`}>
+                    <span className="max-md:hidden inline-flex items-center gap-1 pl-2.5 pr-1 py-0.5 rounded-full bg-gray-50 text-gray-600 font-label text-[10px] font-mono border border-gray-200 shrink-0 whitespace-nowrap" title={`Broadcast ID: ${item.broadcast_id}`}>
                       ID: {item.broadcast_id.slice(0, 8)}
+                      <CopyValue value={item.broadcast_id} label="Broadcast ID" />
                     </span>
                   )}
                   

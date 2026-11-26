@@ -68,3 +68,4 @@ def test_opted_out_list_shows_people_who_said_stop(monkeypatch):
     assert rows[0]["source"] == "stop_reply"
     assert rows[0]["last_campaign"] == "kelir_host_registration_invitation"
     assert rows[0]["last_campaign_at"] == "2026-11-24T07:55:56+00:00"
+    assert rows[0]["last_campaign_id"] == "B1"
