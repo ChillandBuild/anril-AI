@@ -26,6 +26,14 @@ def body_parameters(body: str | None, mapping: list[str] | None, values: dict | 
     return params
 
 
+def render_body(body: str | None, params: list[dict]) -> str:
+    """The template's words as the customer got them: each {{n}} replaced by its sent value."""
+    def fill(m: re.Match) -> str:
+        i = int(m.group(1)) - 1
+        return str(params[i].get("text", "")) if 0 <= i < len(params) else m.group(0)
+    return _VAR.sub(fill, body or "")
+
+
 # message_templates columns header_components() reads.
 HEADER_COLS = "header_media_type,header_media_url,header_text"
 

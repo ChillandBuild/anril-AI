@@ -21,7 +21,7 @@ from app.services.broadcast_executor import next_send_time
 from app.services import reach_audience, reach_results, reports_campaigns
 from app.services.reports_common import phone_cell
 from app.services.outbound_router import SenderPicker, get_best_number
-from app.services.template_params import HEADER_COLS, body_parameters, header_components, template_status
+from app.services.template_params import HEADER_COLS, body_parameters, header_components, render_body, template_status
 from app.services.segmentation import new_lead_score_and_segment
 
 logger = logging.getLogger(__name__)
@@ -1011,6 +1011,7 @@ async def _execute_immediate_send(
                             "direction": "outbound",
                             "channel": "whatsapp",
                             "content": f"[Template: {body.template_name}]",
+                            "template_text": render_body(tpl_body, params) or None,
                             "is_ai_generated": False,
                         }
                         if meta_msg_id:

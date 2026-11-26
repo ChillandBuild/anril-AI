@@ -357,6 +357,8 @@ export interface Message {
   /** The teammate who sent an outbound reply (null for AI, automations and older rows). */
   sent_by_user_id?: string | null;
   sent_by_name?: string | null;
+  /** A sent template's words; content keeps the "[Template: name]" marker. */
+  template_text?: string | null;
 }
 
 export interface Caller {

@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import logging
+import re
 from datetime import date, datetime, timezone, timedelta
 from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -14,6 +15,7 @@ from app.services.actor import actor_name, sender_fields
 from app.services.outbound_router import reply_number_for
 from app.services.call_evaluation import strip_evaluation
 from app.services.reports_common import phone_cell
+from app.services.template_params import body_parameters, render_body
 from app.services.call_transcript import mask_transcripts
 from app.dependencies.tenant import get_tenant_id, get_tenant_and_role, get_owner_tenant_id, require_permission
 from app.models.schemas import Lead, LeadUpdate, LeadWithMessages, Message, PaginatedResponse
@@ -1265,11 +1267,39 @@ async def export_assigned_leads(
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
+_TEMPLATE_MARKER = re.compile(r"^\[Template(?: Broadcast)?: (.+)\]$")
+
+
+def _fill_template_text(db, tenant_id: str, lead_id: str, messages: list[dict], lead_name: str | None = None) -> list[dict]:
+    """Older template sends only stored "[Template: name]". Show the template's words instead,
+    {{1}} = the customer's name (what a send without column mapping used). Rows sent since
+    migration 350 already carry the exact words; a template deleted since keeps its marker."""
+    todo = [(m, mt.group(1)) for m in messages
+            if not m.get("template_text") and (mt := _TEMPLATE_MARKER.match((m.get("content") or "").strip()))]
+    if not todo:
+        return messages
+    try:
+        if lead_name is None:
+            rows = db.table("leads").select("name").eq("id", lead_id).eq("tenant_id", tenant_id).limit(1).execute().data or []
+            lead_name = (rows[0].get("name") if rows else None) or None
+        names = sorted({name for _, name in todo})
+        bodies = {t["name"]: t.get("body_text") or "" for t in (
+            db.table("message_templates").select("name,body_text").eq("tenant_id", tenant_id).in_("name", names).execute().data or []
+        )}
+        for m, name in todo:
+            body = bodies.get(name)
+            if body:
+                m["template_text"] = render_body(body, body_parameters(body, None, None, lead_name))
+    except Exception as e:  # the words are a nicety; the chat must still load
+        logger.warning("template text fill failed for lead %s: %s", lead_id, e)
+    return messages
+
+
 @router.get("/{lead_id}/messages", response_model=list[Message])
 async def get_lead_messages(lead_id: UUID, tenant_id: str = Depends(get_tenant_id)):
     db = get_supabase()
     result = db.table("messages").select("*").eq("lead_id", str(lead_id)).eq("tenant_id", tenant_id).order("created_at").execute()
-    return result.data or []
+    return _fill_template_text(db, tenant_id, str(lead_id), result.data or [])
 
 @router.get("/{lead_id}", response_model=LeadWithMessages)
 async def get_lead(lead_id: UUID, ctx: dict = Depends(get_tenant_and_role)):
@@ -1280,7 +1310,7 @@ async def get_lead(lead_id: UUID, ctx: dict = Depends(get_tenant_and_role)):
         raise HTTPException(status_code=404, detail="Lead not found")
     msgs_result = db.table("messages").select("*").eq("lead_id", str(lead_id)).eq("tenant_id", tenant_id).order("created_at").execute()
     lead = lead_result.data
-    lead["messages"] = msgs_result.data or []
+    lead["messages"] = _fill_template_text(db, tenant_id, str(lead_id), msgs_result.data or [], lead.get("name") or "")
     
     # Enrichment
     lead["broadcast_id"] = None

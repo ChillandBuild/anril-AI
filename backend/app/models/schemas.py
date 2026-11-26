@@ -82,6 +82,8 @@ class Message(MessageBase):
     delivery_error_title: Optional[str] = None
     sent_by_user_id: Optional[UUID] = None
     sent_by_name: Optional[str] = None
+    # A sent template's words; content keeps the "[Template: name]" marker (migration 350).
+    template_text: Optional[str] = None
     model_config = {"from_attributes": True}
 
 # --- Conversation Models ---

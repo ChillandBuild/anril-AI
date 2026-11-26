@@ -15,7 +15,7 @@ from app.services.entitlements import meter
 from app.services.meta_cloud import send_template_message
 from app.services.outbound_router import SenderPicker
 from app.services.segmentation import new_lead_score_and_segment
-from app.services.template_params import HEADER_COLS, body_parameters, header_components
+from app.services.template_params import HEADER_COLS, body_parameters, header_components, render_body
 
 logger = logging.getLogger(__name__)
 
@@ -331,6 +331,7 @@ async def execute_broadcast(row: dict) -> dict:
                             "direction": "outbound",
                             "channel": "whatsapp",
                             "content": f"[Template: {chosen_name}]",
+                            "template_text": render_body(chosen_body, params) or None,
                             "is_ai_generated": False,
                             "meta_message_id": _meta_msg_id,
                         }).execute()

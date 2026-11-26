@@ -142,8 +142,12 @@ function DeliveryTicks({ msg, onDark }: { msg: Message; onDark: boolean }) {
   return <Check size={13} aria-label="Sent" />;
 }
 
+const TEMPLATE_MARKER = /^\[Template(?: Broadcast)?: (.+)\]$/;
+
 const MessageBubble = memo(function MessageBubble({ msg, myUserId }: { msg: Message; myUserId: string | null }) {
   const isOutbound = msg.direction === "outbound";
+  // A template send shows its words, with the template's name as a small label.
+  const templateName = msg.template_text ? TEMPLATE_MARKER.exec((msg.content || "").trim())?.[1] : undefined;
   const isAi = isOutbound && msg.is_ai_generated;
   const isMine = Boolean(myUserId && msg.sent_by_user_id === myUserId);
   // Where an AI reply came from, shown in its label.
@@ -181,7 +185,18 @@ const MessageBubble = memo(function MessageBubble({ msg, myUserId }: { msg: Mess
             onDark={false}
           />
         ) : msg.media_type && <MediaBubble msg={msg} />}
-        {msg.content && !(msg.media_type && msg.content.startsWith("[")) && !(msg.media_type === "audio" && !isOutbound) && (
+        {templateName ? (
+          <>
+            <p className={cn(
+              "mb-1 flex items-center gap-1 text-[10.5px] font-bold",
+              isOutbound && !isAi ? "text-white/75" : "text-[#64748b]"
+            )} title={templateName}>
+              <FileText size={11} strokeWidth={2.5} className="shrink-0" />
+              <span className="truncate">Template · {templateName}</span>
+            </p>
+            <p className="whitespace-pre-wrap">{msg.template_text}</p>
+          </>
+        ) : msg.content && !(msg.media_type && msg.content.startsWith("[")) && !(msg.media_type === "audio" && !isOutbound) && (
           <p className={cn("whitespace-pre-wrap", msg.media_type && "mt-1.5 text-xs opacity-80")}>
             {msg.content}
           </p>
