@@ -205,7 +205,7 @@ class TestBooking:
         monkeypatch.setattr(ai_reply, "send_whatsapp", fake_send)
         monkeypatch.setattr(intake, "note_lead_message", lambda *a, **k: None)
         monkeypatch.setattr(automation_guards, "ai_replies_allowed_for_lead", lambda *a, **k: True)
-        monkeypatch.setattr(live, "offered_starts", lambda design, day, now=None: [datetime(2026, 11, 23, 11, 0, tzinfo=live.IST)])
+        monkeypatch.setattr(live, "bookable", lambda design, moment, now=None: True)   # the slot check has its own tests, with NOW
         answers = json.dumps({"flow_token": wf.make_token(TENANT, PHONE, FORM_2, "a1b2c3d4e5f6"),
                               "slot": "202611231100", "f_full_name": "மீனா", "consent_offers": False})
         out = asyncio.run(wf.handle_submission(db, tenant_id=TENANT, lead_id=LEAD, phone=PHONE, raw=answers,
@@ -267,7 +267,7 @@ def test_auto_reply_off_keeps_the_booking_but_sends_nothing(db, monkeypatch):
     monkeypatch.setattr(ai_reply, "send_whatsapp", fake_send)
     monkeypatch.setattr(intake, "note_lead_message", lambda *a, **k: None)
     monkeypatch.setattr(automation_guards, "ai_replies_allowed_for_lead", lambda *a, **k: False)
-    monkeypatch.setattr(live, "offered_starts", lambda design, day, now=None: [datetime(2026, 11, 23, 11, 0, tzinfo=live.IST)])
+    monkeypatch.setattr(live, "bookable", lambda design, moment, now=None: True)   # the slot check has its own tests, with NOW
     answers = json.dumps({"flow_token": wf.make_token(TENANT, PHONE, FORM_2, "a1b2c3d4e5f6"),
                           "slot": "202611231100", "f_full_name": "Meena"})
     out = asyncio.run(wf.handle_submission(db, tenant_id=TENANT, lead_id=LEAD, phone=PHONE, raw=answers,

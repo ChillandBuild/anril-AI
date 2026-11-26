@@ -25,6 +25,11 @@ def day(offset: int) -> str:
     return (NOW.date() + timedelta(days=offset)).isoformat()
 
 
+def real_day(offset: int) -> str:
+    """For calls through the API: the route reads the real clock, so the date has to follow it."""
+    return (datetime.now(IST).date() + timedelta(days=offset)).isoformat()
+
+
 class _Base(unittest.TestCase):
     def setUp(self):
         ai_teach.clear_cache()
@@ -205,7 +210,7 @@ class ApiTests(_Base):
     def test_edit_needs_knowledge_manage(self):
         self.as_role("caller", ["knowledge.view", "brain.view"])
         self.assertEqual(self.client.post("/api/v1/ai-teach/items", json={"prompt": "a", "reply": "b"}).status_code, 403)
-        self.assertEqual(self.client.post("/api/v1/ai-teach/offers", json={"title": "a", "ends_on": day(2)}).status_code, 403)
+        self.assertEqual(self.client.post("/api/v1/ai-teach/offers", json={"title": "a", "ends_on": real_day(2)}).status_code, 403)
         self.as_role("caller", ["knowledge.manage"])
         self.assertEqual(self.client.post("/api/v1/ai-teach/items", json={"prompt": "a", "reply": "b"}).status_code, 200)
 
@@ -235,7 +240,7 @@ class ApiTests(_Base):
         self.assertEqual((res.status_code, res.json()["detail"]), (422, "Pick the date this offer ends."))
 
     def test_offer_api_flow_and_tenant_scope(self):
-        end = (datetime.now(IST).date() + timedelta(days=5)).isoformat()
+        end = real_day(5)
         made = self.client.post("/api/v1/ai-teach/offers", json={"title": "Sale", "ends_on": end}).json()
         self.assertEqual(self.client.get("/api/v1/ai-teach/offers").json()[0]["status"], "live")
         self.as_role("owner", tenant="t2")
@@ -253,7 +258,7 @@ class ApiTests(_Base):
             self.assertEqual(self.client.get("/api/v1/ai-teach/offers").json(), [])
             res = self.client.post("/api/v1/ai-teach/items", json={"prompt": "a", "reply": "b"})
             self.assertEqual((res.status_code, res.json()["detail"]), (503, "Teach & offers not ready"))
-            res = self.client.post("/api/v1/ai-teach/offers", json={"title": "a", "ends_on": day(3)})
+            res = self.client.post("/api/v1/ai-teach/offers", json={"title": "a", "ends_on": real_day(3)})
             self.assertEqual(res.status_code, 503)
 
 

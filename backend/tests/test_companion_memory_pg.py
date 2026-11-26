@@ -19,6 +19,8 @@ import uuid
 
 import pytest
 
+from app.companion.memory_search import TRIGRAM_FLOOR
+
 URL = os.environ.get("COMPANION_MEMORY_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="COMPANION_MEMORY_TEST_DATABASE_URL is not set")
 
@@ -314,7 +316,11 @@ def test_search_works_with_only_words_or_only_a_vector_and_respects_the_count(ch
     cur, ids = chunks
     args = (ids["astro"], [ids["guru"]], ids["priya"])
     cur.execute(MATCH, args + (None, "Leo", 5))                # the embedding call timed out
-    assert [(t, source) for t, source, _s in cur.fetchall()] == [("Watched Leo with Arun", "trigram")]
+    rows = sorted(cur.fetchall(), key=lambda row: -row[2])     # best first, whatever order the UNION gave
+    assert rows[0] == ("Watched Leo with Arun", "trigram", 1.0)
+    # The SQL has no floor: "Amma lives in Madurai" comes back at 0.25 ("Leo" and "lives" share one
+    # trigram). memory_search drops it; every row after the real match is under that floor.
+    assert all(source == "trigram" and score < TRIGRAM_FLOOR for _t, source, score in rows[1:])
     cur.execute(MATCH, args + (axis(1), "", 5))                # nothing to match by words
     assert [(t, source, s) for t, source, s in cur.fetchall()] == [
         ("Watched Leo with Arun", "vector", 1.0), ("Person: Zoho interview on 20 Nov", "vector", 0.0)]
