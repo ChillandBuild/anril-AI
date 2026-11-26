@@ -15,8 +15,12 @@ export interface HomeParts {
   teamCalls: boolean;
 }
 
-/** Home never keeps the loader up longer than this, whatever is still missing. */
-export const HOME_WAIT_CAP_MS = 5_000;
+/**
+ * Home never keeps the loader up longer than this, whatever is still missing. It is a safety net for a
+ * stuck call, not a normal wait: it has to sit well above the slowest healthy call (Today, about 1 s
+ * after the 26 Nov 2026 fix; 5 s was too low when Today took 6).
+ */
+export const HOME_WAIT_CAP_MS = 10_000;
 
 /**
  * Should Home open now? `settled` says which calls have finished, `waitedMs` how long the loader has been up.

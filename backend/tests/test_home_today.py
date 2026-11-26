@@ -724,3 +724,66 @@ def test_series_is_reused_within_the_ttl_and_per_tenant():
     assert len(calls) == 2  # t1 once, t2 once
     ht._with_series({}, "won series", fn, "t1", "2026-11-24")
     assert len(calls) == 3  # a new day is a new series
+
+
+# ───────────────────────────────────────────── speed: the sources run side by side
+
+SLOW_SOURCES = (
+    "_orders_cards", "_box_quotes_open", "_box_new_enquiries", "_box_won_month", "_box_callbacks", "_box_ads",
+    "_box_profit", "_box_expenses_today", "_feedback", "_waiting_list", "_hot", "_low_stock",
+)
+
+
+def _slow(fn, seconds=0.2):
+    import time
+
+    def slowed(*a, **k):
+        time.sleep(seconds)
+        return fn(*a, **k)
+    return slowed
+
+
+def test_sources_run_side_by_side_not_one_after_another(stub_sources, monkeypatch):
+    """The bug: Home's Today call took about 6 s because every source waited for the one before it."""
+    import time
+
+    for name in SLOW_SOURCES:
+        monkeypatch.setattr(h, name, _slow(getattr(h, name)))
+    monkeypatch.setattr(h, "_count_one", _slow(h._count_one))  # the "does the client use it" checks
+
+    start = time.perf_counter()
+    out = h.compute_today(FakeDB(ALL_BOXES_DB), _ctx())
+    took = time.perf_counter() - start
+
+    # One after another this is 12 sources + 3 checks at 0.2 s each = 3 s. Side by side it is about 0.6 s.
+    assert took < 1.5, f"Today took {took:.2f} s: the sources are running one after another"
+    assert out["available"] == list(h.BOX_KEYS)
+    assert out["waiting"]["total"] == 7 and out["low_stock"]["total"] == 2 and out["hot_bar"]["name"] == "Arun"
+
+
+def test_a_source_still_sees_the_read_only_guard(stub_sources, monkeypatch):
+    """Claude Access runs Today in read-only mode. The guard must reach a source wherever it runs."""
+    from app.db.supabase import read_only
+
+    seen = []
+
+    def low_stock(db, tid):
+        seen.append(read_only.get())
+        return {"total": 0, "items": []}
+
+    monkeypatch.setattr(h, "_low_stock", low_stock)
+    token = read_only.set(True)
+    try:
+        h.compute_today(FakeDB(ALL_BOXES_DB), _ctx())
+    finally:
+        read_only.reset(token)
+    assert seen == [True]
+
+
+def test_profit_box_needs_orders_and_purchases_and_a_shop_that_has_sold(stub_sources):
+    """Profit follows the same "has this shop sold anything" check as the order boxes."""
+    sees_both = _ctx("staff", ["dashboard.view", "deals.view", "purchases.view"])
+    assert "profit_month" in h.compute_today(FakeDB(ALL_BOXES_DB), sees_both)["available"]
+    assert "profit_month" not in h.compute_today(FakeDB({**ALL_BOXES_DB, "deals": []}), sees_both)["available"]
+    only_purchases = _ctx("staff", ["dashboard.view", "purchases.view"])
+    assert "profit_month" not in h.compute_today(FakeDB(ALL_BOXES_DB), only_purchases)["available"]

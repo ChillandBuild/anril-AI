@@ -15,10 +15,14 @@ Every number comes from the same code the linked page uses, so Home never disagr
   feedback_week / todays_feedback              -> customer_feedback rows (Customers > Feedback)
 
 Each source runs on its own: one that fails is logged and left out, never a 500.
+The sources run side by side (see _together): each one only waits on the database, and one after
+another they took about 6 seconds for a client with every module on.
 Who sees what: _has_permission AND "the client uses it" (see _gates).
 """
+import contextvars
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 from app.dependencies.tenant import _has_permission
@@ -56,6 +60,23 @@ def _safe(name: str, fn, default=_FAILED):
     except Exception as e:
         logger.warning("home today: %s failed: %s", name, e)
         return default
+
+
+# How many sources wait on the database at once, per Home request. A client with every module on has
+# about 14, so they all start together.
+_WORKERS = 16
+
+
+def _together(jobs: dict) -> dict:
+    """Run every job at the same time: name -> its result. The whole set then takes about as long as
+    the slowest job instead of the sum of them. A job must not raise: wrap it in _safe."""
+    if len(jobs) < 2:
+        return {name: fn() for name, fn in jobs.items()}
+    with ThreadPoolExecutor(max_workers=min(_WORKERS, len(jobs)), thread_name_prefix="home-today") as pool:
+        # Each job gets its own copy of the context: that is what carries the read-only guard
+        # (app.db.supabase.read_only) into the worker thread.
+        futures = {name: pool.submit(contextvars.copy_context().run, fn) for name, fn in jobs.items()}
+        return {name: f.result() for name, f in futures.items()}
 
 
 def _plural(n: int, one: str, many: str) -> str:
@@ -163,12 +184,12 @@ def _callbacks_feature_on(features: set) -> bool:
 def _gates(db, ctx: dict, tenant_id: str) -> dict:
     """box key -> True when this person may see it AND the client uses it."""
     gates: dict[str, bool] = {k: False for k in BOX_KEYS}
+    scheduled_ok = _has_permission(ctx, "telecalling.scheduled.view") or _has_permission(ctx, "telecalling.scheduled")
 
+    # "Does the client use it": one database question per module this person may see, asked side by side.
+    checks: dict = {}
     if _has_permission(ctx, "deals.view"):
-        has_deals = _safe("gate deals", lambda: _count_one(db, "deals", tenant_id), False)
-        for k in ("money_in_today", "to_collect", "orders_pending", "quotes_open"):
-            gates[k] = bool(has_deals)
-
+        checks["deals"] = lambda: _count_one(db, "deals", tenant_id)
     if _has_permission(ctx, "catalog.view"):
         def low_set():
             rows = (
@@ -176,36 +197,42 @@ def _gates(db, ctx: dict, tenant_id: str) -> dict:
                 .not_.is_("low_stock_at", "null").limit(1).execute().data
             )
             return bool(rows)
-        gates["low_stock"] = bool(_safe("gate catalog", low_set, False))
+        checks["catalog"] = low_set
+    if _has_permission(ctx, "inbound_leads.view") or scheduled_ok:
+        checks["features"] = lambda: _tenant_features(db, tenant_id)
+    if _has_permission(ctx, "bookings.view"):
+        # the client uses bookings once it has set up a service people can book
+        checks["bookings"] = lambda: _count_one(db, "booking_services", tenant_id, active=True)
+    if _has_permission(ctx, "purchases.view"):
+        # the shop has written down at least one expense (a missing table reads as "no")
+        checks["expenses"] = lambda: _count_one(db, "cash_expenses", tenant_id)
+    if _has_permission(ctx, "leads.view"):
+        # Customers > Feedback is switched on for this shop
+        from app.services import customer_feedback as fb
+        checks["feedback"] = lambda: fb.is_on(tenant_id)
+    # A check that fails reads as "no"; features reads as "unknown" (None).
+    found = _together({
+        name: (lambda name=name, fn=fn: _safe(f"gate {name}", fn, None if name == "features" else False))
+        for name, fn in checks.items()
+    })
 
-    needs_features = _has_permission(ctx, "inbound_leads.view") or (
-        _has_permission(ctx, "telecalling.scheduled.view") or _has_permission(ctx, "telecalling.scheduled")
-    )
-    features = _safe("gate features", lambda: _tenant_features(db, tenant_id), None) if needs_features else None
+    has_deals = bool(found.get("deals"))
+    for k in ("money_in_today", "to_collect", "orders_pending", "quotes_open"):
+        gates[k] = has_deals
+    gates["low_stock"] = bool(found.get("catalog"))
+
+    features = found.get("features")
     if features is not None:
         if _has_permission(ctx, "inbound_leads.view") and "inbound_messaging" in features:
             gates["new_enquiries_today"] = gates["won_month"] = True
-        scheduled_ok = _has_permission(ctx, "telecalling.scheduled.view") or _has_permission(ctx, "telecalling.scheduled")
         if scheduled_ok and _callbacks_feature_on(features):
             gates["callbacks_today"] = True
 
-    if _has_permission(ctx, "bookings.view"):
-        # the client uses bookings once it has set up a service people can book
-        gates["bookings_today"] = bool(_safe(
-            "gate bookings", lambda: _count_one(db, "booking_services", tenant_id, active=True), False))
-
+    gates["bookings_today"] = bool(found.get("bookings"))
     # Profit: the Reports > Money rule (see orders AND see purchases), and the shop has sold something.
-    if _has_permission(ctx, "deals.view") and _has_permission(ctx, "purchases.view"):
-        gates["profit_month"] = bool(_safe("gate profit", lambda: _count_one(db, "deals", tenant_id), False))
-
-    # Expenses: the shop has written down at least one expense (a missing table reads as "no").
-    if _has_permission(ctx, "purchases.view"):
-        gates["expenses_today"] = bool(_safe("gate expenses", lambda: _count_one(db, "cash_expenses", tenant_id), False))
-
-    # Feedback: Customers > Feedback is switched on for this shop.
-    if _has_permission(ctx, "leads.view"):
-        from app.services import customer_feedback as fb
-        gates["feedback_week"] = bool(_safe("gate feedback", lambda: fb.is_on(tenant_id), False))
+    gates["profit_month"] = has_deals and _has_permission(ctx, "purchases.view")
+    gates["expenses_today"] = bool(found.get("expenses"))
+    gates["feedback_week"] = bool(found.get("feedback"))
 
     if _has_permission(ctx, "conversations.view"):
         gates["hot_waiting"] = True
@@ -542,27 +569,23 @@ def _in_day(ts, start: datetime, end: datetime) -> bool:
 
 # ───────────────────────────────────────────────────────────── the whole answer
 
+def _target_box(db, ctx: dict, t: dict) -> dict | None:
+    """Target box: its own rule (who may see money vs only a %), decided in sales_target.home_box."""
+    from app.services import sales_target
+    tenant_id = ctx["tenant_id"]
+    box = sales_target.home_box(db, ctx, t["now"])
+    # a trend line only for people who see rupees (unit paise); the % view and "set a target" get none
+    if box is not None and box.get("unit") == "paise":
+        _with_series(box, "target series", lambda: _money_series(db, tenant_id, t), tenant_id, t["today"])
+    return box
+
+
 def compute_today(db, ctx: dict, now: datetime | None = None) -> dict:
     """available / defaults / boxes / hot_bar / waiting / low_stock / todays_bookings / todays_feedback for this person."""
     from app.services.orders import _now
     tenant_id = ctx["tenant_id"]
     t = _times(now or _now())
     gates = _gates(db, ctx, tenant_id)
-    boxes: dict[str, dict] = {}
-    hot_bar = waiting = low_stock = todays_feedback = None
-
-    cards = None
-    if any(gates[k] for k in ("money_in_today", "to_collect", "orders_pending")):
-        got = _safe("orders cards", lambda: _orders_cards(db, tenant_id, t))
-        cards = None if got is _FAILED else got
-    if cards is not None:
-        if gates["money_in_today"]:
-            boxes["money_in_today"] = _box_money_in(cards)
-        if gates["to_collect"]:
-            boxes["to_collect"] = _box_to_collect(cards)
-        if gates["orders_pending"]:
-            boxes["orders_pending"] = _box_orders_pending(cards)
-
     singles = {
         "quotes_open": lambda: _box_quotes_open(db, tenant_id, t),
         "new_enquiries_today": lambda: _box_new_enquiries(db, tenant_id, t),
@@ -572,48 +595,69 @@ def compute_today(db, ctx: dict, now: datetime | None = None) -> dict:
         "profit_month": lambda: _box_profit(db, ctx, t),
         "expenses_today": lambda: _box_expenses_today(db, tenant_id, t),
     }
-    for key, fn in singles.items():
-        if gates[key]:
-            box = _safe(key, fn)
-            if box is not _FAILED and box is not None:
-                boxes[key] = box
 
+    # Every source this person gets. None needs another's answer, so they all run side by side.
+    jobs: dict = {key: fn for key, fn in singles.items() if gates[key]}
+    if any(gates[k] for k in ("money_in_today", "to_collect", "orders_pending")):
+        jobs["orders cards"] = lambda: _orders_cards(db, tenant_id, t)
     if _has_permission(ctx, "conversations.view"):
-        got = _safe("waiting list", lambda: _waiting_list(db, ctx))
-        waiting = None if got is _FAILED else got
-        got = _safe("hot chats", lambda: _hot(db, ctx))
-        if got is not _FAILED:
-            hot_count, hot_bar = got
-            if gates["hot_waiting"]:
-                boxes["hot_waiting"] = {"value": hot_count, "unit": "count", "sub": "waiting for your reply"}
+        jobs["waiting list"] = lambda: _waiting_list(db, ctx)
+        jobs["hot chats"] = lambda: _hot(db, ctx)
+    jobs["target"] = lambda: _target_box(db, ctx, t)
+    if gates["bookings_today"]:
+        jobs["bookings"] = lambda: _bookings_today(db, ctx, t)
+    if gates["feedback_week"]:
+        jobs["feedback"] = lambda: _feedback(db, ctx, t)
+    if gates["low_stock"]:
+        jobs["low stock"] = lambda: _low_stock(db, tenant_id)
+    got = _together({name: (lambda name=name, fn=fn: _safe(name, fn)) for name, fn in jobs.items()})
 
-    # Target box: its own rule (who may see money vs only a %), decided in sales_target.home_box.
-    from app.services import sales_target
-    box = _safe("target", lambda: sales_target.home_box(db, ctx, t["now"]))
-    if box is not _FAILED and box is not None:
-        # a trend line only for people who see rupees (unit paise); the % view and "set a target" get none
-        if box.get("unit") == "paise":
-            _with_series(box, "target series", lambda: _money_series(db, tenant_id, t), tenant_id, t["today"])
+    def result(name: str):
+        """That source's answer, or None when it was not asked for, failed, or had nothing."""
+        value = got.get(name, _FAILED)
+        return None if value is _FAILED else value
+
+    boxes: dict[str, dict] = {}
+    cards = result("orders cards")
+    if cards is not None:
+        if gates["money_in_today"]:
+            boxes["money_in_today"] = _box_money_in(cards)
+        if gates["to_collect"]:
+            boxes["to_collect"] = _box_to_collect(cards)
+        if gates["orders_pending"]:
+            boxes["orders_pending"] = _box_orders_pending(cards)
+
+    for key in singles:
+        box = result(key)
+        if box is not None:
+            boxes[key] = box
+
+    waiting = result("waiting list")
+    hot_bar = None
+    hot = result("hot chats")
+    if hot is not None:
+        hot_count, hot_bar = hot
+        if gates["hot_waiting"]:
+            boxes["hot_waiting"] = {"value": hot_count, "unit": "count", "sub": "waiting for your reply"}
+
+    box = result("target")
+    if box is not None:
         boxes["target_month"] = box
 
-    todays_bookings = None
-    if gates["bookings_today"]:
-        got = _safe("bookings", lambda: _bookings_today(db, ctx, t))
-        if got is not _FAILED:
-            boxes["bookings_today"] = got["box"]
-            todays_bookings = got["list"]
+    todays_bookings = todays_feedback = None
+    bookings = result("bookings")
+    if bookings is not None:
+        boxes["bookings_today"] = bookings["box"]
+        todays_bookings = bookings["list"]
 
-    if gates["feedback_week"]:
-        got = _safe("feedback", lambda: _feedback(db, ctx, t))
-        if got is not _FAILED:
-            boxes["feedback_week"] = got["box"]
-            todays_feedback = got["list"]
+    feedback = result("feedback")
+    if feedback is not None:
+        boxes["feedback_week"] = feedback["box"]
+        todays_feedback = feedback["list"]
 
-    if gates["low_stock"]:
-        got = _safe("low stock", lambda: _low_stock(db, tenant_id))
-        if got is not _FAILED:
-            low_stock = got
-            boxes["low_stock"] = _box_low_stock(got)
+    low_stock = result("low stock")
+    if low_stock is not None:
+        boxes["low_stock"] = _box_low_stock(low_stock)
 
     available = [k for k in BOX_KEYS if k in boxes]
     for k in available:
