@@ -125,3 +125,6 @@ def _no_real_network(monkeypatch):
     monkeypatch.setattr(httpx.HTTPTransport, "handle_request", refuse)
     monkeypatch.setattr(httpx.AsyncHTTPTransport, "handle_async_request", refuse_async)
     monkeypatch.setattr("app.db.supabase._BACKOFF_SECONDS", 0)
+    # postgrest 2.34+ (what CI installs; requirements.txt has no upper pin) also retries a failed GET
+    # itself, sleeping 1 s, 2 s, 4 s: 14 s per settings read. Its arguments changed between versions.
+    monkeypatch.setattr("postgrest._sync.request_builder.get_retry_delay", lambda *a, **k: 0, raising=False)
