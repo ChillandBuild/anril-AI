@@ -11,13 +11,14 @@ Two kinds of audience feed the SAME template pipeline (routes/upload.py bulk_sen
 
 Two send-time rules apply to both:
   - blocked people (leads.blocked_at) are skipped and shown as "blocked";
-  - the 2-offers-a-month limit: a person who already got MONTHLY_LIMIT Reach campaigns in the
-    current IST calendar month is skipped and shown as "skipped: monthly limit".
+  - the weekly limit: a person who already got the client's number of Reach campaigns (setting
+    reach_weekly_limit, default 2, 1-50) in the current IST week (Sunday 00:00 to Saturday 23:59)
+    is skipped and shown as "skipped: weekly limit", unless the sender chose "send anyway" for them.
     ONLY Reach campaign sends count: broadcast_recipients rows with send_status 'sent'. Bills,
     order updates, reminders, Auto-Messages, replies and OTP never write those rows.
 
 A skipped person is stored as a broadcast_recipients row with send_status 'opted_out_skip'
-(the send_status CHECK has no "skipped" value) and fail_reason 'monthly_limit' or 'blocked'.
+(the send_status CHECK has no "skipped" value) and fail_reason 'weekly_limit' or 'blocked'.
 The classifier in routes/upload.py reads that fail_reason and counts them as skipped, not
 as failed and not as opt-outs.
 
@@ -33,9 +34,14 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 IST = timezone(timedelta(hours=5, minutes=30))
-MONTHLY_LIMIT = 2
-SKIP_MONTHLY = "monthly_limit"
+DEFAULT_WEEKLY_LIMIT = 2
+MIN_WEEKLY_LIMIT = 1
+MAX_WEEKLY_LIMIT = 50
+LIMIT_SETTING_KEY = "reach_weekly_limit"   # app_settings row, per tenant
+SKIP_WEEKLY = "weekly_limit"
+SKIP_MONTHLY = "monthly_limit"             # only READ: older recipient rows carry it
 SKIP_BLOCKED = "blocked"
+SKIP_REASONS = frozenset({SKIP_WEEKLY, SKIP_MONTHLY, SKIP_BLOCKED})
 # A group send is labelled with this in the history's file-name slot (no schema change needed).
 GROUP_LABEL_PREFIX = "Group: "
 
@@ -84,21 +90,31 @@ def _paged(build) -> list[dict]:
             return rows
 
 
-# ── the month ────────────────────────────────────────────────────────────────
+# ── the week ─────────────────────────────────────────────────────────────────
 
-def month_start_utc(now: datetime | None = None) -> datetime:
-    """Midnight on the 1st of the current IST calendar month, as a UTC time."""
-    now = now or datetime.now(timezone.utc)
-    ist = now.astimezone(IST)
-    return ist.replace(day=1, hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+def _week_start_ist(now: datetime | None = None) -> datetime:
+    ist = (now or datetime.now(timezone.utc)).astimezone(IST)
+    sunday = ist - timedelta(days=(ist.weekday() + 1) % 7)
+    return sunday.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def monthly_counts(db, tenant_id: str, keys, *, now: datetime | None = None,
-                   exclude_broadcast_id: str | None = None) -> dict[str, int]:
-    """phone key -> how many DIFFERENT Reach campaigns sent to that person this IST month.
+def week_start_utc(now: datetime | None = None) -> datetime:
+    """Midnight at the start of the current IST week (Sunday), as a UTC time."""
+    return _week_start_ist(now).astimezone(timezone.utc)
+
+
+def week_range_ist(now: datetime | None = None) -> tuple[str, str]:
+    """("YYYY-MM-DD" Sunday, "YYYY-MM-DD" Saturday) of the current IST week."""
+    start = _week_start_ist(now)
+    return start.date().isoformat(), (start + timedelta(days=6)).date().isoformat()
+
+
+def weekly_counts(db, tenant_id: str, keys, *, now: datetime | None = None,
+                  exclude_broadcast_id: str | None = None) -> dict[str, int]:
+    """phone key -> how many DIFFERENT Reach campaigns sent to that person this IST week.
     `exclude_broadcast_id` leaves out the campaign being run right now (a resumed run must not
     count its own earlier sends against its own people)."""
-    since = month_start_utc(now).isoformat()
+    since = week_start_utc(now).isoformat()
     seen: dict[str, set[str]] = {}
     for chunk in _chunks(sorted(set(keys))):
         forms = _spellings(chunk)
@@ -116,16 +132,41 @@ def monthly_counts(db, tenant_id: str, keys, *, now: datetime | None = None,
     return {k: len(v) for k, v in seen.items()}
 
 
+def weekly_limit(db, tenant_id: str) -> int:
+    """The client's saved weekly number; anything missing, broken or out of range is the default."""
+    try:
+        rows = (db.table("app_settings").select("value").eq("tenant_id", tenant_id)
+                .eq("key", LIMIT_SETTING_KEY).limit(1).execute().data or [])
+    except Exception as exc:
+        logger.warning("Reach: weekly-limit lookup failed, using %s: %s", DEFAULT_WEEKLY_LIMIT, exc)
+        return DEFAULT_WEEKLY_LIMIT
+    try:
+        value = int(str(rows[0].get("value")).strip()) if rows else DEFAULT_WEEKLY_LIMIT
+    except (TypeError, ValueError):
+        return DEFAULT_WEEKLY_LIMIT
+    return value if MIN_WEEKLY_LIMIT <= value <= MAX_WEEKLY_LIMIT else DEFAULT_WEEKLY_LIMIT
+
+
+def save_weekly_limit(db, tenant_id: str, value: int) -> int:
+    """Save the client's weekly number (1-50). Raises ValueError outside that range."""
+    if not isinstance(value, int) or isinstance(value, bool) or not MIN_WEEKLY_LIMIT <= value <= MAX_WEEKLY_LIMIT:
+        raise ValueError(f"The weekly limit must be a whole number from {MIN_WEEKLY_LIMIT} to {MAX_WEEKLY_LIMIT}.")
+    db.table("app_settings").upsert(
+        {"tenant_id": tenant_id, "key": LIMIT_SETTING_KEY, "value": str(value), "is_secret": False},
+        on_conflict="tenant_id,key").execute()
+    return value
+
+
 # ── who is blocked, who said stop, who is on a tag opt-out ───────────────────
 
 def _lead_flags(db, tenant_id: str, keys) -> dict[str, dict]:
-    """phone key -> the lead's blocked_at / opted_out / negative-reply flags (tenant's own, not deleted)."""
+    """phone key -> the lead's name / blocked_at / opted_out / negative-reply flags (tenant's own, not deleted)."""
     flags: dict[str, dict] = {}
     for chunk in _chunks(sorted(set(keys))):
         forms = _spellings(chunk)
 
         def build(forms=forms):
-            return (db.table("leads").select("id,phone,opted_out,blocked_at,broadcast_negative_reply_at")
+            return (db.table("leads").select("id,phone,name,opted_out,blocked_at,broadcast_negative_reply_at")
                     .eq("tenant_id", tenant_id).is_("deleted_at", "null").in_("phone", forms))
 
         for row in _paged(build):
@@ -154,14 +195,16 @@ def _tag_opted_out_keys(db, tenant_id: str, keys, tag_id: str | None) -> set[str
 
 
 def send_time_skips(db, tenant_id: str, phones, *, now: datetime | None = None,
-                    exclude_broadcast_id: str | None = None) -> tuple[set[str], set[str]]:
-    """(blocked keys, over-the-monthly-limit keys) among `phones`. Read ONCE when a campaign starts.
+                    exclude_broadcast_id: str | None = None,
+                    send_anyway=frozenset()) -> tuple[set[str], set[str]]:
+    """(blocked keys, over-the-weekly-limit keys) among `phones`. Read ONCE when a campaign starts.
+    People in `send_anyway` (phone keys) are never reported as over the limit.
 
     Fails OPEN: if a lookup errors, a warning is logged and that rule is not applied, so a
     database blip never stops a whole campaign. (A blocked person is still stopped by the central
     guard in services/blocked_guard.py; only the "skipped: blocked" label would be missing.)
     Two campaigns that start at the same moment can each see the old count, so a person could
-    end the month with 3; that is accepted."""
+    end the week with 3; that is accepted."""
     keys = {k for k in (phone_key(p) for p in phones) if k}
     if not keys:
         return set(), set()
@@ -172,10 +215,11 @@ def send_time_skips(db, tenant_id: str, phones, *, now: datetime | None = None,
     except Exception as exc:
         logger.warning("Reach: blocked lookup failed, sending without the blocked label: %s", exc)
     try:
-        counts = monthly_counts(db, tenant_id, keys - blocked, now=now, exclude_broadcast_id=exclude_broadcast_id)
-        over = {k for k, n in counts.items() if n >= MONTHLY_LIMIT}
+        limit = weekly_limit(db, tenant_id)
+        counts = weekly_counts(db, tenant_id, keys - blocked, now=now, exclude_broadcast_id=exclude_broadcast_id)
+        over = {k for k, n in counts.items() if n >= limit and k not in send_anyway}
     except Exception as exc:
-        logger.warning("Reach: monthly-limit lookup failed, sending without the limit: %s", exc)
+        logger.warning("Reach: weekly-limit lookup failed, sending without the limit: %s", exc)
     return blocked, over
 
 
@@ -193,11 +237,12 @@ def classify_people(db, tenant_id: str, people: list[dict], *, tag_id: str | Non
                     now: datetime | None = None) -> dict:
     """Sort people into who will get the campaign and why the rest will not.
 
-    people: [{"phone": raw, "opted_in": bool}]. Each person lands in ONE bucket, checked in this
+    people: [{"phone": raw, "opted_in": bool, "name": optional}]. Each person lands in ONE bucket, checked in this
     order: no_opt_in, said_stop, negative_reply, blocked, over_cap, else will_get. Numbers that are
     not phones are `invalid`; repeated phones count once.
     """
     seen: dict[str, bool] = {}
+    names: dict[str, str | None] = {}
     invalid = 0
     for p in people:
         key = phone_key(p.get("phone"))
@@ -205,14 +250,17 @@ def classify_people(db, tenant_id: str, people: list[dict], *, tag_id: str | Non
             invalid += 1
         elif key not in seen:
             seen[key] = bool(p.get("opted_in"))
+            names[key] = p.get("name")
     keys = set(seen)
     flags = _lead_flags(db, tenant_id, keys) if keys else {}
     tag_stop = _tag_opted_out_keys(db, tenant_id, keys, tag_id) if keys else set()
     blocked = {k for k in keys if (flags.get(k) or {}).get("blocked_at")}
-    counts = monthly_counts(db, tenant_id, keys - blocked, now=now) if keys else {}
+    limit = weekly_limit(db, tenant_id)
+    counts = weekly_counts(db, tenant_id, keys - blocked, now=now) if keys else {}
 
     out = {"total": len(keys), "invalid": invalid, "no_opt_in": 0, "said_stop": 0,
-           "negative_reply": 0, "blocked": 0, "over_cap": 0, "will_get": 0}
+           "negative_reply": 0, "blocked": 0, "over_cap": 0, "will_get": 0,
+           "over_limit_people": [], "weekly_limit": limit}
     for key, opted_in in seen.items():
         lead = flags.get(key) or {}
         if not opted_in:
@@ -223,17 +271,20 @@ def classify_people(db, tenant_id: str, people: list[dict], *, tag_id: str | Non
             out["negative_reply"] += 1
         elif key in blocked:
             out["blocked"] += 1
-        elif counts.get(key, 0) >= MONTHLY_LIMIT:
+        elif counts.get(key, 0) >= limit:
             out["over_cap"] += 1
+            out["over_limit_people"].append({"phone": key, "name": lead.get("name") or names.get(key) or None,
+                                             "this_week": counts[key]})
         else:
             out["will_get"] += 1
+    out["over_limit_people"].sort(key=lambda p: (-p["this_week"], p["phone"]))
     return out
 
 
 def preview_numbers(db, tenant_id: str, people: list[dict], **kwargs) -> dict:
-    """classify_people plus the limit and the Meta cost line for the "will get it" people."""
+    """classify_people plus the weekly limit, the week, and the Meta cost line for the "will get it" people."""
     out = classify_people(db, tenant_id, people, **kwargs)
-    out["monthly_limit"] = MONTHLY_LIMIT
+    out["week_start"], out["week_end"] = week_range_ist(kwargs.get("now"))
     out.update(cost_for(out["will_get"]))
     return out
 

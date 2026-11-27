@@ -56,7 +56,8 @@ class PreviewTests(unittest.TestCase):
         def numbers(db, tenant_id, people, **kw):
             seen["people"] = people
             return {"total": 3, "invalid": 0, "no_opt_in": 0, "said_stop": 0, "negative_reply": 0, "blocked": 0,
-                    "over_cap": 0, "will_get": 3, "monthly_limit": 4, "rate_inr": 0.86, "cost_inr": 2.58}
+                    "over_cap": 0, "will_get": 3, "weekly_limit": 2, "week_start": "2026-11-22", "week_end": "2026-11-28",
+                    "over_limit_people": [], "rate_inr": 0.86, "cost_inr": 2.58}
 
         with patch.object(routes, "_resolve_group_or_http", return_value=GROUP), \
              patch.object(routes.reach_audience, "preview_numbers", side_effect=numbers), \

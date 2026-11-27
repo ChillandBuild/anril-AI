@@ -342,6 +342,9 @@ class BulkLeadItem(BaseModel):
     name: Optional[str] = None
     opt_in_source: Optional[str] = None
     extra_cols: dict[str, str] = {}  # all CSV columns keyed by header name
+    # Picked on Confirm to get this campaign although they are over the weekly limit. Set ONLY by the
+    # server in bulk_send (from BulkSendRequest.over_limit_picks); a value sent by the browser is overwritten.
+    send_over_limit: bool = False
 
 
 class ReachOffer(BaseModel):
@@ -372,6 +375,8 @@ class BulkSendRequest(BaseModel):
     # Unset = exactly the old flow. Set = after a successful send/schedule the AI agent is told about
     # this offer until its end date (Teach & offers, ai_offers source 'reach').
     offer: Optional[ReachOffer] = None
+    # People picked on Confirm to send to although they are over the weekly limit (any phone spelling).
+    over_limit_picks: list[str] = []
 
 
 class ReachPreviewRequest(BaseModel):
@@ -787,7 +792,7 @@ async def reach_preview(body: ReachPreviewRequest, ctx: dict = Depends(require_o
         group = {**resolved["group"], "members": resolved["members"]}
         stopped_in_group = resolved["stopped"]
         no_number = resolved["no_whatsapp"]
-        people = [{"phone": p["phone"], "opted_in": p["opted_in"]} for p in resolved["people"]]
+        people = [{"phone": p["phone"], "opted_in": p["opted_in"], "name": p.get("name")} for p in resolved["people"]]
         # People who said stop are never sent to, whatever the include_opted_out switch says.
         include_opted_out = False
     else:
@@ -795,7 +800,7 @@ async def reach_preview(body: ReachPreviewRequest, ctx: dict = Depends(require_o
     # The uploaded list, alone or added to the group (repeats are counted once below).
     for lead in body.leads:
         source = (lead.opt_in_source or "").strip().lower()
-        people.append({"phone": lead.phone, "opted_in": bool(source) and source != "manual"})
+        people.append({"phone": lead.phone, "opted_in": bool(source) and source != "manual", "name": lead.name})
     nums = await asyncio.to_thread(
         lambda: reach_audience.preview_numbers(
             db, tenant_id, people, tag_id=body.tag_id, include_opted_out=include_opted_out,
@@ -815,7 +820,10 @@ async def reach_preview(body: ReachPreviewRequest, ctx: dict = Depends(require_o
         "negative_reply": nums["negative_reply"],
         "over_cap": nums["over_cap"],
         "will_get": nums["will_get"],
-        "monthly_limit": nums["monthly_limit"],
+        "weekly_limit": nums["weekly_limit"],
+        "week_start": nums["week_start"],
+        "week_end": nums["week_end"],
+        "over_limit_people": nums["over_limit_people"],
         "rate_inr": nums["rate_inr"],
         "cost_inr": nums["cost_inr"],
     }
@@ -842,7 +850,7 @@ async def _execute_immediate_send(
     tpl_header: dict,
     _has_fail_reason: bool,
     blocked_keys: frozenset | set = frozenset(),
-    monthly_limit_keys: frozenset | set = frozenset(),
+    weekly_limit_keys: frozenset | set = frozenset(),
 ) -> None:
     """Background worker for an immediate 'Send Now' broadcast. bulk_send() has already
     returned {"status": "queued", ...} to the client by the time this runs — progress is
@@ -851,7 +859,7 @@ async def _execute_immediate_send(
     sent = 0
     failed = 0
     opted_out_skipped = 0
-    skipped_monthly = 0   # already got MONTHLY_LIMIT Reach campaigns this IST month
+    skipped_weekly = 0    # already got the weekly number of Reach campaigns this IST week (and not picked)
     skipped_blocked = 0   # blocked people (leads.blocked_at)
     recipient_rows = []
     aborted = False
@@ -881,7 +889,7 @@ async def _execute_immediate_send(
                         "result": json.dumps({
                             "sent": sent, "failed": failed,
                             "opted_out_skipped": opted_out_skipped, "total": len(eligible),
-                            "skipped_monthly_limit": skipped_monthly, "skipped_blocked": skipped_blocked,
+                            "skipped_weekly_limit": skipped_weekly, "skipped_blocked": skipped_blocked,
                         }),
                     }).eq("id", broadcast_id).execute()
                 except Exception:
@@ -936,16 +944,16 @@ async def _execute_immediate_send(
                 logger.info(f"Bulk-send skipped negative-reply lead {phone}")
                 continue
 
-            # Blocked people and the 2-offers-a-month limit (services/reach_audience.py). Kept as
+            # Blocked people and the weekly limit (services/reach_audience.py). Kept as
             # opted_out_skip rows with a fail_reason: the send_status CHECK has no "skipped" value.
             skip_key = reach_audience.phone_key(phone)
             skip_reason = (reach_audience.SKIP_BLOCKED if skip_key in blocked_keys
-                           else reach_audience.SKIP_MONTHLY if skip_key in monthly_limit_keys else None)
+                           else reach_audience.SKIP_WEEKLY if skip_key in weekly_limit_keys else None)
             if skip_reason:
                 if skip_reason == reach_audience.SKIP_BLOCKED:
                     skipped_blocked += 1
                 else:
-                    skipped_monthly += 1
+                    skipped_weekly += 1
                 row = {
                     "tenant_id": tenant_id,
                     "broadcast_id": broadcast_id,
@@ -1229,7 +1237,7 @@ async def _execute_immediate_send(
                 "csv_file_path": body.csv_file_path,
                 "csv_file_name": body.csv_file_name,
                 "tag_id": body.tag_id,
-                "skipped_monthly_limit": skipped_monthly,
+                "skipped_weekly_limit": skipped_weekly,
                 "skipped_blocked": skipped_blocked,
             })
             history = history[:50]
@@ -1253,7 +1261,7 @@ async def _execute_immediate_send(
                 "number_used": picker.numbers_used_label(),
                 "total": len(eligible),
                 "deferred_to_tomorrow": len(deferred_leads),
-                "skipped_monthly_limit": skipped_monthly,
+                "skipped_weekly_limit": skipped_weekly,
                 "skipped_blocked": skipped_blocked,
                 **({"note": "stopped_pushback"} if pushback_stopped else {}),
             }),
@@ -1296,7 +1304,7 @@ async def bulk_send(
 
     # A Customers group as the audience: its people are read here from the group (never trusted from the
     # browser), then go through the SAME pipeline below as an uploaded list. People who said stop and
-    # people with no opt-in are left out up front; blocked people and the monthly limit are handled at
+    # people with no opt-in are left out up front; blocked people and the weekly limit are handled at
     # send time, like for an uploaded list.
     group_resolved: dict | None = None
     if body.group_id:
@@ -1321,6 +1329,13 @@ async def bulk_send(
             seen_phones.add(p)
             deduped.append(lead)
     eligible = deduped
+
+    # Picked on Confirm: over the weekly limit but sent anyway. Set here, from the top-level list only,
+    # for every person, so a flag sent by the browser on a single lead is ignored.
+    picked = {reach_audience.phone_key(p) for p in body.over_limit_picks}
+    picked.discard(None)
+    for lead in eligible:
+        lead.send_over_limit = reach_audience.phone_key(lead.phone) in picked
 
     if not eligible:
         raise HTTPException(
@@ -1653,9 +1668,12 @@ async def bulk_send(
     except Exception as sb_err:
         logger.error(f"scheduled_broadcasts tracking row insert failed: {sb_err}")
 
-    # The monthly limit and the blocked list are read once, now; the send loop only checks the sets.
-    blocked_keys, monthly_limit_keys = await asyncio.to_thread(
-        reach_audience.send_time_skips, db, tenant_id, all_phones, exclude_broadcast_id=broadcast_id)
+    # The weekly limit and the blocked list are read once, now; the send loop only checks the sets.
+    # People picked on Confirm are left out of the over-the-limit set.
+    send_anyway = {reach_audience.phone_key(l.phone) for l in eligible if l.send_over_limit}
+    blocked_keys, weekly_limit_keys = await asyncio.to_thread(
+        lambda: reach_audience.send_time_skips(
+            db, tenant_id, all_phones, exclude_broadcast_id=broadcast_id, send_anyway=send_anyway))
 
     asyncio.create_task(_execute_immediate_send(
         tenant_id=tenant_id,
@@ -1677,7 +1695,7 @@ async def bulk_send(
         tpl_header=tpl_header,
         _has_fail_reason=_has_fail_reason,
         blocked_keys=blocked_keys,
-        monthly_limit_keys=monthly_limit_keys,
+        weekly_limit_keys=weekly_limit_keys,
     ))
 
     _record_reach_offer(db, tenant_id, body, broadcast_id, _ctx.get("user_id"))
@@ -2140,7 +2158,7 @@ def _classify_broadcast_outcomes(
         return {
             "found": False,
             "counts": {"sent": 0, "delivered": 0, "opened": 0, "failed": 0, "total": 0,
-                       "skipped_monthly_limit": 0, "skipped_blocked": 0},
+                       "skipped_weekly_limit": 0, "skipped_monthly_limit": 0, "skipped_blocked": 0},
             "failures": [],
         }
 
@@ -2244,7 +2262,7 @@ def _classify_broadcast_outcomes(
         logger.warning(f"Classifier delivery-status lookup failed: {e}")
 
     sent = delivered = opened = failed = opted_out = 0
-    skipped_monthly = skipped_blocked = 0
+    skipped_weekly = skipped_monthly = skipped_blocked = 0
     failures: list[dict] = []
     seen_phones: set[str] = set()
     reached: list[dict] = []  # everyone counted as delivered (opened ones included), for the Delivered/Opened CSVs
@@ -2255,10 +2273,12 @@ def _classify_broadcast_outcomes(
         send_status = r.get("send_status") or ""
         lead_id = r.get("lead_id")
 
-        # Skipped on purpose at send time (monthly limit / blocked): neither failed nor an opt-out.
-        if send_status == "opted_out_skip" and r.get("fail_reason") in (
-                reach_audience.SKIP_MONTHLY, reach_audience.SKIP_BLOCKED):
-            if r.get("fail_reason") == reach_audience.SKIP_MONTHLY:
+        # Skipped on purpose at send time (weekly limit / blocked): neither failed nor an opt-out.
+        # Older rows say monthly_limit (the rule before the weekly one): counted apart, never failed.
+        if send_status == "opted_out_skip" and r.get("fail_reason") in reach_audience.SKIP_REASONS:
+            if r.get("fail_reason") == reach_audience.SKIP_WEEKLY:
+                skipped_weekly += 1
+            elif r.get("fail_reason") == reach_audience.SKIP_MONTHLY:
                 skipped_monthly += 1
             else:
                 skipped_blocked += 1
@@ -2342,8 +2362,8 @@ def _classify_broadcast_outcomes(
     return {
         "found": True,
         "counts": {"sent": sent, "delivered": delivered, "opened": opened, "failed": failed, "opted_out": opted_out,
-                   "skipped_monthly_limit": skipped_monthly, "skipped_blocked": skipped_blocked,
-                   "total": len(recipients)},
+                   "skipped_weekly_limit": skipped_weekly, "skipped_monthly_limit": skipped_monthly,
+                   "skipped_blocked": skipped_blocked, "total": len(recipients)},
         "failures": failures,
         "reached": reached,
     }
@@ -2859,6 +2879,7 @@ async def refresh_broadcast_metrics(
                     record["delivered"] = counts["delivered"]
                     record["opened"] = counts["opened"]
                     record["failed"] = counts["failed"]
+                    record["skipped_weekly_limit"] = counts.get("skipped_weekly_limit", 0)
                     record["skipped_monthly_limit"] = counts.get("skipped_monthly_limit", 0)
                     record["skipped_blocked"] = counts.get("skipped_blocked", 0)
                 else:

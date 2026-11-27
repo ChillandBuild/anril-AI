@@ -205,10 +205,12 @@ async def execute_broadcast(row: dict) -> dict:
         )
         already_recorded_phones = {r["phone"] for r in already_recorded if r.get("phone")}
 
-        # Blocked people and the 2-offers-a-month limit, read once for this run (services/reach_audience.py).
-        blocked_keys, monthly_limit_keys = reach_audience.send_time_skips(
-            db, tenant_id, all_phones, exclude_broadcast_id=broadcast_id)
-        skipped_monthly = 0
+        # Blocked people and the weekly limit, read once for this run (services/reach_audience.py).
+        # People picked on Confirm (send_over_limit on their stored row) are left out of the over set.
+        send_anyway = {reach_audience.phone_key(l.get("phone")) for l in leads_raw if l.get("send_over_limit")}
+        blocked_keys, weekly_limit_keys = reach_audience.send_time_skips(
+            db, tenant_id, all_phones, exclude_broadcast_id=broadcast_id, send_anyway=send_anyway)
+        skipped_weekly = 0
         skipped_blocked = 0
 
         def _record_recipient(row: dict) -> None:
@@ -259,14 +261,14 @@ async def execute_broadcast(row: dict) -> dict:
 
             skip_key = reach_audience.phone_key(phone)
             skip_reason = (reach_audience.SKIP_BLOCKED if skip_key in blocked_keys
-                           else reach_audience.SKIP_MONTHLY if skip_key in monthly_limit_keys else None)
+                           else reach_audience.SKIP_WEEKLY if skip_key in weekly_limit_keys else None)
             if skip_reason:
                 # Not failed: skipped on purpose. Stored as opted_out_skip + fail_reason (the send_status
                 # CHECK has no "skipped"); the History tab reads the reason (routes/upload.py classifier).
                 if skip_reason == reach_audience.SKIP_BLOCKED:
                     skipped_blocked += 1
                 else:
-                    skipped_monthly += 1
+                    skipped_weekly += 1
                 _record_recipient({
                     "tenant_id": tenant_id,
                     "broadcast_id": broadcast_id,
@@ -471,7 +473,7 @@ async def execute_broadcast(row: dict) -> dict:
                 logger.warning(f"lead_tag_interest broadcast_count update failed: {lti_err}")
 
         result = {"sent": sent, "failed": failed, "broadcast_id": broadcast_id,
-                  "skipped_monthly_limit": skipped_monthly, "skipped_blocked": skipped_blocked}
+                  "skipped_weekly_limit": skipped_weekly, "skipped_blocked": skipped_blocked}
         if pushback_stopped:
             result["note"] = "stopped_pushback"
         if deferred:
@@ -486,7 +488,7 @@ async def execute_broadcast(row: dict) -> dict:
             db, tenant_id, broadcast_id, template_name, opt_in_source,
             sent, failed, len(leads_raw), picker.numbers_used_label(),
             row.get("csv_file_url"), row.get("csv_file_path"), row.get("csv_file_name"), tag_id,
-            skipped_monthly_limit=skipped_monthly, skipped_blocked=skipped_blocked,
+            skipped_weekly_limit=skipped_weekly, skipped_blocked=skipped_blocked,
         )
         logger.info(f"Scheduled broadcast {row_id}: sent={sent} failed={failed} aborted={aborted}")
         return result
@@ -506,7 +508,7 @@ def _write_broadcast_history(
     db, tenant_id: str, broadcast_id: str, template_name: str, opt_in_source: str,
     sent: int, failed: int, total_leads: int, number_used: str | None,
     csv_file_url: str | None, csv_file_path: str | None, csv_file_name: str | None,
-    tag_id: str | None, skipped_monthly_limit: int = 0, skipped_blocked: int = 0,
+    tag_id: str | None, skipped_weekly_limit: int = 0, skipped_blocked: int = 0,
 ) -> None:
     """Append a broadcast_history entry so fired scheduled/drip/retry broadcasts show
     up in the History tab, the same as immediate 'Send Now' broadcasts already do."""
@@ -575,7 +577,7 @@ def _write_broadcast_history(
             "csv_file_path": csv_file_path,
             "csv_file_name": csv_file_name,
             "tag_id": tag_id,
-            "skipped_monthly_limit": skipped_monthly_limit,
+            "skipped_weekly_limit": skipped_weekly_limit,
             "skipped_blocked": skipped_blocked,
         })
         history = history[:50]

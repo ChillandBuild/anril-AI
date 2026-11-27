@@ -22,6 +22,8 @@ import { NO_REACH_OFFER, ReachOfferBox, reachOfferPayload, reachOfferProblem, ty
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Pagination, usePagedList } from "@/components/ui/Pagination";
 import { CampaignResultsDrawer } from "./CampaignResultsDrawer";
+import { OverLimitPicker } from "./OverLimitPicker";
+import { keepKnown, type OverLimitPerson } from "./overLimit";
 import { SCHEDULE_HOURS_NOTE, dripTimeProblem, scheduleChoices, scheduleProblem } from "./reachSchedule";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -50,7 +52,8 @@ type SendResult = {
   failed: number;
   opted_out_skipped: number;
   number_used: string;
-  // People left out at send time: they already got the monthly limit of offers, or are blocked.
+  // People left out at send time: over the weekly limit (older records: the monthly one), or blocked.
+  skipped_weekly_limit?: number;
   skipped_monthly_limit?: number;
   skipped_blocked?: number;
 };
@@ -67,7 +70,10 @@ type ReachPreview = {
   negative_reply: number;
   over_cap: number;
   will_get: number;
-  monthly_limit: number;
+  weekly_limit: number;
+  week_start: string;
+  week_end: string;
+  over_limit_people: OverLimitPerson[];
   rate_inr: number;
   cost_inr: number;
 };
@@ -110,7 +116,8 @@ type BroadcastHistoryItem = {
   // "group" when the campaign went to a Customers group; group_name is that group's name.
   audience_type?: "list" | "group";
   group_name?: string;
-  // People left out when it went out: already got the monthly limit of offers, or blocked.
+  // People left out when it went out: over the weekly limit (older records: the monthly one), or blocked.
+  skipped_weekly_limit?: number;
   skipped_monthly_limit?: number;
   skipped_blocked?: number;
   // Paid within 7 days of the send. paid_amount_inr is missing without the deals.view permission.
@@ -880,13 +887,17 @@ export default function OutboundLeadsPage() {
   const addedGroup = groups?.find((g) => g.id === addGroupId) ?? null;
   // The confirm step's numbers: who is left out and why, who will get it, and Meta's charge.
   const [reachPreview, setReachPreview] = useState<ReachPreview | null>(null);
+  // People over this week's limit whom the client ticked to still get this campaign (phones).
+  const [overLimitPicked, setOverLimitPicked] = useState<Set<string>>(new Set());
   const [reachLoading, setReachLoading] = useState(false);
   const [reachError, setReachError] = useState<string | null>(null);
   const reachRequestRef = useRef(0);
   // How many people the confirm step is about (a group: those who will get it; a list: its rows),
   // and how many different numbers that is.
-  const audienceTotal = isGroup ? (reachPreview?.will_get ?? selectedGroup?.member_count ?? 0)
-    : addedGroup ? (reachPreview?.will_get ?? (parsedData?.total_rows ?? 0) + addedGroup.member_count)
+  // will_get plus the over-limit people the client ticked; one value for every number shown next to the picker.
+  const willGetWithPicks = reachPreview ? reachPreview.will_get + overLimitPicked.size : null;
+  const audienceTotal = isGroup ? (willGetWithPicks ?? selectedGroup?.member_count ?? 0)
+    : addedGroup ? (willGetWithPicks ?? (parsedData?.total_rows ?? 0) + addedGroup.member_count)
     : (parsedData?.total_rows ?? 0);
   const uniqueAudience = isGroup ? audienceTotal : (parsedData?.unique_phone_count ?? parsedData?.total_rows ?? 0);
 
@@ -916,7 +927,7 @@ export default function OutboundLeadsPage() {
         const auth = await getAuthHeaders();
         const res = await fetch(`${API_URL}/api/v1/upload/broadcast/${activeBroadcastId}/progress`, { headers: auth });
         if (!res.ok || cancelled) return;
-        const data: { status: string; sent?: number; failed?: number; opted_out_skipped?: number; number_used?: string; total?: number; skipped_monthly_limit?: number; skipped_blocked?: number; note?: string } = await res.json();
+        const data: { status: string; sent?: number; failed?: number; opted_out_skipped?: number; number_used?: string; total?: number; skipped_weekly_limit?: number; skipped_monthly_limit?: number; skipped_blocked?: number; note?: string } = await res.json();
         const sentSoFar = data.sent ?? 0;
         const failedSoFar = data.failed ?? 0;
         setSendingIndex((i) => Math.max(i, Math.min(sentSoFar + failedSoFar, sendingNames.length - 1)));
@@ -927,6 +938,7 @@ export default function OutboundLeadsPage() {
             failed: failedSoFar,
             opted_out_skipped: data.opted_out_skipped ?? 0,
             number_used: data.number_used ?? "",
+            skipped_weekly_limit: data.skipped_weekly_limit ?? 0,
             skipped_monthly_limit: data.skipped_monthly_limit ?? 0,
             skipped_blocked: data.skipped_blocked ?? 0,
           });
@@ -1458,6 +1470,7 @@ export default function OutboundLeadsPage() {
     setAudience("list");
     setGroupId("");
     setReachPreview(null);
+    setOverLimitPicked(new Set());
     setReachError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -1710,10 +1723,14 @@ export default function OutboundLeadsPage() {
       });
       if (!res.ok) throw new Error(res.status === 404 ? "This group no longer exists." : "Could not work out who this will reach.");
       const data: ReachPreview = await res.json();
-      if (mine === reachRequestRef.current) setReachPreview(data);
+      if (mine === reachRequestRef.current) {
+        setReachPreview(data);
+        setOverLimitPicked((prev) => keepKnown(prev, data.over_limit_people ?? []));
+      }
     } catch (err) {
       if (mine === reachRequestRef.current) {
         setReachPreview(null);
+        setOverLimitPicked(new Set());
         setReachError(err instanceof Error ? err.message : "Could not work out who this will reach.");
       }
     } finally {
@@ -1757,7 +1774,7 @@ export default function OutboundLeadsPage() {
       let leads: Awaited<ReturnType<typeof buildCsvLeads>> = [];
       if (isGroup) {
         // The server reads the group's people itself; the browser sends only the group's id.
-        const count = reachPreview?.will_get ?? selectedGroup?.member_count ?? 0;
+        const count = willGetWithPicks ?? selectedGroup?.member_count ?? 0;
         if (count === 0) {
           setSendError("Nobody in this group can get this message right now.");
           return;
@@ -1798,6 +1815,7 @@ export default function OutboundLeadsPage() {
         exclude_negative_replies: isGroup ? false : excludeNegativeReplies,
         include_opted_out: isGroup ? false : includeOptedOut,
         offer: reachOfferPayload(reachOffer),
+        over_limit_picks: Array.from(overLimitPicked),
       };
 
       const auth = await getAuthHeaders();
@@ -1886,7 +1904,7 @@ export default function OutboundLeadsPage() {
                     <SegmentedControl
                       aria-labelledby="audience-label"
                       value={audience}
-                      onChange={(v) => { setAudience(v); setReachPreview(null); setReachError(null); }}
+                      onChange={(v) => { setAudience(v); setReachPreview(null); setOverLimitPicked(new Set()); setReachError(null); }}
                       options={[
                         { value: "list", label: "Uploaded list" },
                         { value: "group", label: "Customers group" },
@@ -1902,7 +1920,7 @@ export default function OutboundLeadsPage() {
                       <Select
                         id="group-select"
                         value={groupId}
-                        onChange={(v) => { setGroupId(v); setReachPreview(null); }}
+                        onChange={(v) => { setGroupId(v); setReachPreview(null); setOverLimitPicked(new Set()); }}
                         placeholder={groups === null ? "Loading groups…" : "Pick a group…"}
                         disabled={groups === null || groups.length === 0}
                         options={(groups ?? []).map((g) => ({
@@ -2024,7 +2042,7 @@ export default function OutboundLeadsPage() {
                     <Select
                       id="add-group"
                       value={addGroupId}
-                      onChange={(v) => { setAddGroupId(v === "none" ? "" : v); setReachPreview(null); }}
+                      onChange={(v) => { setAddGroupId(v === "none" ? "" : v); setReachPreview(null); setOverLimitPicked(new Set()); }}
                       placeholder={groups === null ? "Loading groups…" : "No group"}
                       disabled={groups === null || groups.length === 0}
                       options={[{ value: "none", label: "No group" }, ...(groups ?? []).map((g) => ({
@@ -2067,7 +2085,7 @@ export default function OutboundLeadsPage() {
                       <ul className="space-y-2 font-body text-xs text-on-surface-muted">
                         <li className="flex gap-2"><span className="text-emerald-500 font-bold">✓</span><span>The people are read from the group when you send, so a group that fills itself is always up to date.</span></li>
                         <li className="flex gap-2"><span className="text-emerald-500 font-bold">✓</span><span>Anyone who said stop, is blocked, or never agreed to messages is left out.</span></li>
-                        <li className="flex gap-2"><span className="text-emerald-500 font-bold">✓</span><span>Each person gets at most 2 offers a month.</span></li>
+                        <li className="flex gap-2"><span className="text-emerald-500 font-bold">✓</span><span>Each person gets at most your weekly number of broadcasts (Sunday to Saturday; 2 unless you change it in Settings › Limits &amp; Meta charges). You can still pick people over it on the last step.</span></li>
                       </ul>
                     </div>
                   ) : (
@@ -2816,21 +2834,33 @@ export default function OutboundLeadsPage() {
                   if (r.no_number > 0) parts.push(`${r.no_number.toLocaleString()} with no usable number`);
                   if (r.blocked > 0) parts.push(`${r.blocked.toLocaleString()} blocked`);
                   if (r.negative_reply > 0) parts.push(`${r.negative_reply.toLocaleString()} said no to an earlier offer`);
-                  if (r.over_cap > 0) parts.push(`${r.over_cap.toLocaleString()} already got ${r.monthly_limit} offers this month`);
-                  const cost = r.cost_inr;
+                  const picks = overLimitPicked.size;
+                  if (r.over_cap > 0) parts.push(`${r.over_cap.toLocaleString()} over this week's limit (${picks.toLocaleString()} picked)`);
+                  const total = r.will_get + picks;
+                  const cost = total * r.rate_inr;
                   return (
-                    <div className="rounded-xl border border-surface-mid bg-surface-low p-4 space-y-3">
-                      <p className="font-body text-sm text-on-surface">
-                        {parts.join(" · ")} · <strong>{r.will_get.toLocaleString()} will get it</strong>
-                      </p>
-                      <p className="font-body text-sm text-on-surface">
-                        Meta charges about <strong>₹{cost.toLocaleString("en-IN", { maximumFractionDigits: cost < 100 ? 2 : 0 })}</strong> for this
-                        {" "}({r.will_get.toLocaleString()} × ₹{r.rate_inr.toFixed(2)}, before GST).
-                      </p>
-                      <p className="font-body text-xs text-on-surface-muted">
-                        Each person gets at most {r.monthly_limit} offers a month. This is checked again when the message goes out, so anyone who reaches the limit by then is skipped.
-                      </p>
-                    </div>
+                    <>
+                      <div className="rounded-xl border border-surface-mid bg-surface-low p-4 space-y-3">
+                        <p className="font-body text-sm text-on-surface">
+                          {parts.join(" · ")} · <strong>{total.toLocaleString()} will get it</strong>
+                        </p>
+                        <p className="font-body text-sm text-on-surface">
+                          Meta charges about <strong>₹{cost.toLocaleString("en-IN", { maximumFractionDigits: cost < 100 ? 2 : 0 })}</strong> for this
+                          {" "}({total.toLocaleString()} × ₹{r.rate_inr.toFixed(2)}, before GST).
+                        </p>
+                        <p className="font-body text-xs text-on-surface-muted">
+                          Each person gets at most {r.weekly_limit} {r.weekly_limit === 1 ? "broadcast" : "broadcasts"} a week (Sunday to Saturday). You can change this in Settings › Limits &amp; Meta charges. It&apos;s checked again when the message goes out.
+                        </p>
+                      </div>
+                      <OverLimitPicker
+                        people={r.over_limit_people ?? []}
+                        limit={r.weekly_limit}
+                        weekStart={r.week_start}
+                        weekEnd={r.week_end}
+                        picked={overLimitPicked}
+                        onChange={setOverLimitPicked}
+                      />
+                    </>
                   );
                 })()}
 
@@ -2950,7 +2980,7 @@ export default function OutboundLeadsPage() {
                   </button>
                   <button
                     onClick={handleSend}
-                    disabled={sendLoading || !canManageOutbound || (isGroup && (reachLoading || !reachPreview || reachPreview.will_get === 0))}
+                    disabled={sendLoading || !canManageOutbound || (isGroup && (reachLoading || !reachPreview || (willGetWithPicks ?? 0) === 0))}
                     title={canManageOutbound ? "Dispatch campaign" : "Read-only role: dispatch is disabled"}
                     className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white rounded-xl font-label text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:blur-[0.5px] disabled:cursor-not-allowed transition-colors shadow-sm"
                   >
@@ -3159,8 +3189,11 @@ export default function OutboundLeadsPage() {
                 </div>
               </div>
 
-              {((sendResult.skipped_monthly_limit ?? 0) > 0 || (sendResult.skipped_blocked ?? 0) > 0) && (
+              {((sendResult.skipped_weekly_limit ?? 0) > 0 || (sendResult.skipped_monthly_limit ?? 0) > 0 || (sendResult.skipped_blocked ?? 0) > 0) && (
                 <div className="rounded-xl border border-surface-mid bg-surface-low p-4 space-y-1 font-body text-sm text-on-surface">
+                  {(sendResult.skipped_weekly_limit ?? 0) > 0 && (
+                    <p><strong>{sendResult.skipped_weekly_limit!.toLocaleString()}</strong> skipped: weekly limit (they already had this week&apos;s broadcasts)</p>
+                  )}
                   {(sendResult.skipped_monthly_limit ?? 0) > 0 && (
                     <p><strong>{sendResult.skipped_monthly_limit!.toLocaleString()}</strong> skipped: monthly limit (they already got 2 offers this month)</p>
                   )}
@@ -3960,6 +3993,8 @@ export default function OutboundLeadsPage() {
                     </span>);
                   if ((item.said_stop ?? 0) > 0) chips.push(
                     <span key="stop" className={cn(chip, "bg-gray-50 border-gray-200 text-gray-700")}>{item.said_stop!.toLocaleString()} said stop</span>);
+                  if ((item.skipped_weekly_limit ?? 0) > 0) chips.push(
+                    <span key="weekly" className={cn(chip, "bg-gray-50 border-gray-200 text-gray-700")}>{item.skipped_weekly_limit!.toLocaleString()} skipped: weekly limit</span>);
                   if ((item.skipped_monthly_limit ?? 0) > 0) chips.push(
                     <span key="monthly" className={cn(chip, "bg-gray-50 border-gray-200 text-gray-700")}>{item.skipped_monthly_limit!.toLocaleString()} skipped: monthly limit</span>);
                   if ((item.skipped_blocked ?? 0) > 0) chips.push(

@@ -1,4 +1,4 @@
-"""Reach audiences: the 2-offers-a-month limit, blocked people, the Meta cost line, and a
+"""Reach audiences: the weekly limit (the client's own number, default 2), blocked people, the Meta cost line, and a
 Customers group as the audience (services/reach_audience.py), on the in-memory fake database.
 
 tenant-1 is the caller's; tenant-2 has the same phone numbers and must never change a count.
@@ -28,7 +28,7 @@ def utc(*args) -> datetime:
     return datetime(*args, tzinfo=timezone.utc)
 
 
-# 2026-11-20 10:00 UTC = 15:30 IST. The IST month started 2026-10-31T18:30:00Z.
+# 2026-11-20 10:00 UTC = 15:30 IST, a Friday. The IST week (Sun-Sat) started 2026-11-14T18:30:00Z.
 NOW = utc(2026, 11, 20, 10, 0)
 
 
@@ -38,63 +38,111 @@ def sent(db, phone, broadcast, at, tenant=T1, status="sent"):
         "send_status": status, "created_at": at.isoformat()})
 
 
-class MonthBoundaryTests(unittest.TestCase):
-    def test_month_starts_at_midnight_ist_on_the_first(self):
-        self.assertEqual(ra.month_start_utc(NOW), utc(2026, 10, 31, 18, 30))
+class WeekBoundaryTests(unittest.TestCase):
+    def test_week_starts_sunday_midnight_ist(self):
+        self.assertEqual(ra.week_start_utc(NOW), utc(2026, 11, 14, 18, 30))
 
-    def test_late_evening_ist_on_the_last_day_is_still_the_old_month(self):
-        # 2026-11-30 23:30 IST = 18:00 UTC: still November, which began 2026-10-31T18:30Z.
-        self.assertEqual(ra.month_start_utc(utc(2026, 11, 30, 18, 0)), utc(2026, 10, 31, 18, 30))
+    def test_saturday_late_evening_ist_is_still_this_week(self):
+        # Sat 28 Nov 23:30 IST = 18:00 UTC; the week began Sun 22 Nov 00:00 IST.
+        self.assertEqual(ra.week_start_utc(utc(2026, 11, 28, 18, 0)), utc(2026, 11, 21, 18, 30))
 
-    def test_just_after_midnight_ist_is_the_new_month(self):
-        # 2026-12-01 00:15 IST = 2026-11-30 18:45 UTC.
-        self.assertEqual(ra.month_start_utc(utc(2026, 11, 30, 18, 45)), utc(2026, 11, 30, 18, 30))
+    def test_just_after_sunday_midnight_ist_is_a_new_week(self):
+        # Sun 29 Nov 00:15 IST = Sat 28 Nov 18:45 UTC.
+        self.assertEqual(ra.week_start_utc(utc(2026, 11, 28, 18, 45)), utc(2026, 11, 28, 18, 30))
+
+    def test_week_range_is_sunday_to_saturday(self):
+        self.assertEqual(ra.week_range_ist(NOW), ("2026-11-15", "2026-11-21"))
 
 
-class MonthlyCountTests(unittest.TestCase):
+def set_limit(db, value, tenant=T1):
+    db.rows("app_settings").append({"tenant_id": tenant, "key": ra.LIMIT_SETTING_KEY, "value": value, "is_secret": False})
+
+
+class WeeklyLimitSettingTests(unittest.TestCase):
     def setUp(self):
         self.db = FakeSupabase()
 
-    def test_counts_distinct_reach_campaigns_this_ist_month_per_person(self):
-        sent(self.db, "+919876543210", "b1", utc(2026, 11, 2, 5, 0))
-        sent(self.db, "+919876543210", "b2", utc(2026, 11, 10, 5, 0))
-        sent(self.db, "+919876543211", "b1", utc(2026, 11, 2, 5, 0))
-        counts = ra.monthly_counts(self.db, T1, {"919876543210", "919876543211"}, now=NOW)
+    def test_default_is_two_when_never_set(self):
+        self.assertEqual(ra.weekly_limit(self.db, T1), 2)
+
+    def test_saved_number_is_used(self):
+        set_limit(self.db, "5")
+        self.assertEqual(ra.weekly_limit(self.db, T1), 5)
+
+    def test_another_tenants_number_is_not_used(self):
+        set_limit(self.db, "7", tenant=T2)
+        self.assertEqual(ra.weekly_limit(self.db, T1), 2)
+
+    def test_broken_values_fall_back_to_two(self):
+        for bad in ("abc", "0", "51", ""):
+            db = FakeSupabase()
+            set_limit(db, bad)
+            self.assertEqual(ra.weekly_limit(db, T1), 2, bad)
+
+    def test_read_error_falls_back_to_two(self):
+        class Boom:
+            def table(self, _name):
+                raise RuntimeError("db down")
+        self.assertEqual(ra.weekly_limit(Boom(), T1), 2)
+
+    def test_save_rejects_out_of_range(self):
+        for bad in (0, 51):
+            with self.assertRaises(ValueError):
+                ra.save_weekly_limit(self.db, T1, bad)
+        self.assertEqual(ra.save_weekly_limit(self.db, T1, 50), 50)
+        self.assertEqual(ra.weekly_limit(self.db, T1), 50)
+
+    def test_saving_twice_updates_the_one_row(self):
+        ra.save_weekly_limit(self.db, T1, 4)
+        ra.save_weekly_limit(self.db, T1, 6)
+        self.assertEqual(ra.weekly_limit(self.db, T1), 6)
+        self.assertEqual(len(self.db.rows("app_settings")), 1)
+
+
+class WeeklyCountTests(unittest.TestCase):
+    def setUp(self):
+        self.db = FakeSupabase()
+
+    def test_counts_distinct_reach_campaigns_this_ist_week_per_person(self):
+        sent(self.db, "+919876543210", "b1", utc(2026, 11, 16, 5, 0))
+        sent(self.db, "+919876543210", "b2", utc(2026, 11, 18, 5, 0))
+        sent(self.db, "+919876543211", "b1", utc(2026, 11, 16, 5, 0))
+        counts = ra.weekly_counts(self.db, T1, {"919876543210", "919876543211"}, now=NOW)
         self.assertEqual(counts, {"919876543210": 2, "919876543211": 1})
 
     def test_boundary_is_ist_not_utc(self):
-        # 17:00 UTC on Oct 31 = 22:30 IST Oct 31: October. 19:00 UTC = 00:30 IST Nov 1: November.
-        sent(self.db, "+919876543210", "old", utc(2026, 10, 31, 17, 0))
-        sent(self.db, "+919876543210", "new", utc(2026, 10, 31, 19, 0))
-        counts = ra.monthly_counts(self.db, T1, {"919876543210"}, now=NOW)
+        # 18:00 UTC Sat 14 Nov = 23:30 IST Sat: last week. 19:00 UTC = 00:30 IST Sun 15 Nov: this week.
+        sent(self.db, "+919876543210", "old", utc(2026, 11, 14, 18, 0))
+        sent(self.db, "+919876543210", "new", utc(2026, 11, 14, 19, 0))
+        counts = ra.weekly_counts(self.db, T1, {"919876543210"}, now=NOW)
         self.assertEqual(counts, {"919876543210": 1})
 
     def test_only_sent_rows_count_not_failed_or_skipped(self):
-        sent(self.db, "+919876543210", "b1", utc(2026, 11, 2), status="failed")
-        sent(self.db, "+919876543210", "b2", utc(2026, 11, 3), status="opted_out_skip")
-        sent(self.db, "+919876543210", "b3", utc(2026, 11, 4), status="rejected")
-        self.assertEqual(ra.monthly_counts(self.db, T1, {"919876543210"}, now=NOW), {})
+        sent(self.db, "+919876543210", "b1", utc(2026, 11, 16), status="failed")
+        sent(self.db, "+919876543210", "b2", utc(2026, 11, 17), status="opted_out_skip")
+        sent(self.db, "+919876543210", "b3", utc(2026, 11, 18), status="rejected")
+        self.assertEqual(ra.weekly_counts(self.db, T1, {"919876543210"}, now=NOW), {})
 
     def test_other_tenants_rows_never_count(self):
-        sent(self.db, "+919876543210", "b1", utc(2026, 11, 2), tenant=T2)
-        sent(self.db, "+919876543210", "b2", utc(2026, 11, 3), tenant=T2)
-        self.assertEqual(ra.monthly_counts(self.db, T1, {"919876543210"}, now=NOW), {})
+        sent(self.db, "+919876543210", "b1", utc(2026, 11, 16), tenant=T2)
+        sent(self.db, "+919876543210", "b2", utc(2026, 11, 17), tenant=T2)
+        self.assertEqual(ra.weekly_counts(self.db, T1, {"919876543210"}, now=NOW), {})
 
     def test_one_campaign_counts_once_even_with_two_rows(self):
-        sent(self.db, "+919876543210", "b1", utc(2026, 11, 2))
-        sent(self.db, "+919876543210", "b1", utc(2026, 11, 2, 1))
-        self.assertEqual(ra.monthly_counts(self.db, T1, {"919876543210"}, now=NOW), {"919876543210": 1})
+        sent(self.db, "+919876543210", "b1", utc(2026, 11, 16))
+        sent(self.db, "+919876543210", "b1", utc(2026, 11, 16, 1))
+        self.assertEqual(ra.weekly_counts(self.db, T1, {"919876543210"}, now=NOW), {"919876543210": 1})
 
     def test_the_running_campaign_is_left_out(self):
-        sent(self.db, "+919876543210", "b1", utc(2026, 11, 2))
+        sent(self.db, "+919876543210", "b1", utc(2026, 11, 16))
         sent(self.db, "+919876543210", "running", utc(2026, 11, 20, 9, 0))
-        counts = ra.monthly_counts(self.db, T1, {"919876543210"}, now=NOW, exclude_broadcast_id="running")
+        counts = ra.weekly_counts(self.db, T1, {"919876543210"}, now=NOW, exclude_broadcast_id="running")
         self.assertEqual(counts, {"919876543210": 1})
 
     def test_other_spellings_of_the_same_phone_are_one_person(self):
-        sent(self.db, "919876543210", "b1", utc(2026, 11, 2))          # no plus
-        sent(self.db, "+919876543210", "b2", utc(2026, 11, 3))
-        self.assertEqual(ra.monthly_counts(self.db, T1, {ra.phone_key("98765 43210")}, now=NOW), {"919876543210": 2})
+        sent(self.db, "919876543210", "b1", utc(2026, 11, 16))          # no plus
+        sent(self.db, "+919876543210", "b2", utc(2026, 11, 17))
+        self.assertEqual(ra.weekly_counts(self.db, T1, {ra.phone_key("98765 43210")}, now=NOW), {"919876543210": 2})
 
 
 class SendTimeSkipTests(unittest.TestCase):
@@ -105,20 +153,34 @@ class SendTimeSkipTests(unittest.TestCase):
         # The same number as 0003, blocked in ANOTHER tenant only.
         self.db.rows("leads").append({"id": "x", "tenant_id": T2, "phone": "+919000000001", "blocked_at": "2026-11-01"})
 
-    def test_two_campaigns_this_month_is_over_the_cap_and_one_is_not(self):
-        sent(self.db, "+919000000001", "b1", utc(2026, 11, 2))
-        sent(self.db, "+919000000001", "b2", utc(2026, 11, 3))
-        sent(self.db, "+919000000002", "b1", utc(2026, 11, 2))
+    def test_two_campaigns_this_week_is_over_the_default_and_one_is_not(self):
+        sent(self.db, "+919000000001", "b1", utc(2026, 11, 16))
+        sent(self.db, "+919000000001", "b2", utc(2026, 11, 17))
+        sent(self.db, "+919000000002", "b1", utc(2026, 11, 16))
         blocked, over = ra.send_time_skips(self.db, T1, ["+919000000001", "+919000000002", "+919000000003"], now=NOW)
         self.assertEqual(over, {"919000000001"})
         self.assertEqual(blocked, {"919000000003"})  # tenant-2's block on 0001 does not leak
 
-    def test_the_limit_is_two(self):
-        self.assertEqual(ra.MONTHLY_LIMIT, 2)
+    def test_the_clients_own_number_is_the_limit(self):
+        set_limit(self.db, "3")
+        for b in ("b1", "b2", "b3"):
+            sent(self.db, "+919000000001", b, utc(2026, 11, 16))
+        for b in ("b1", "b2"):
+            sent(self.db, "+919000000002", b, utc(2026, 11, 16))
+        _, over = ra.send_time_skips(self.db, T1, ["+919000000001", "+919000000002"], now=NOW)
+        self.assertEqual(over, {"919000000001"})
+
+    def test_send_anyway_removes_a_person_from_over(self):
+        set_limit(self.db, "3")
+        for b in ("b1", "b2", "b3"):
+            sent(self.db, "+919000000001", b, utc(2026, 11, 16))
+        _, over = ra.send_time_skips(self.db, T1, ["+919000000001"], now=NOW,
+                                     send_anyway=frozenset({"919000000001"}))
+        self.assertEqual(over, set())
 
     def test_a_lookup_error_fails_open_not_closed(self):
         with patch.object(ra, "_lead_flags", side_effect=RuntimeError("db down")), \
-                patch.object(ra, "monthly_counts", side_effect=RuntimeError("db down")):
+                patch.object(ra, "weekly_counts", side_effect=RuntimeError("db down")):
             self.assertEqual(ra.send_time_skips(self.db, T1, ["+919000000001"], now=NOW), (set(), set()))
 
 
@@ -152,9 +214,9 @@ class ClassifyTests(unittest.TestCase):
         lead("+919000000003")
         lead("+919000000004", opted_out=True, blocked_at="2026-11-01")   # stopped AND blocked: counted once, as stop
         for b in ("b1", "b2"):
-            sent(db, "+919000000003", b, utc(2026, 11, 5))
-        sent(db, "+919000000002", "b1", utc(2026, 11, 5))
-        sent(db, "+919000000002", "b2", utc(2026, 11, 5))                # blocked AND over the cap: counted once, as blocked
+            sent(db, "+919000000003", b, utc(2026, 11, 16))
+        sent(db, "+919000000002", "b1", utc(2026, 11, 16))
+        sent(db, "+919000000002", "b2", utc(2026, 11, 16))                # blocked AND over the cap: counted once, as blocked
         people = [{"phone": f"+9190000000{n:02d}", "opted_in": True} for n in (1, 2, 3, 4, 5)]
         people += [{"phone": "+919000000006", "opted_in": False}, {"phone": "not a phone", "opted_in": True}]
         out = ra.classify_people(db, T1, people, now=NOW)
@@ -164,10 +226,31 @@ class ClassifyTests(unittest.TestCase):
 
     def test_cap_applies_to_an_uploaded_contact_who_is_not_a_lead_yet(self):
         db = FakeSupabase()
-        sent(db, "+919111111111", "b1", utc(2026, 11, 5))
-        sent(db, "+919111111111", "b2", utc(2026, 11, 6))
+        sent(db, "+919111111111", "b1", utc(2026, 11, 16))
+        sent(db, "+919111111111", "b2", utc(2026, 11, 17))
         out = ra.classify_people(db, T1, [{"phone": "91111 11111", "opted_in": True}], now=NOW)
         self.assertEqual((out["over_cap"], out["will_get"]), (1, 0))
+
+    def test_over_limit_people_lists_who_and_how_many_most_first(self):
+        db = FakeSupabase()
+        db.rows("leads").append({"id": "a", "tenant_id": T1, "phone": "+919876543210", "name": "Asha", "deleted_at": None})
+        for b in ("b1", "b2"):
+            sent(db, "+919876543210", b, utc(2026, 11, 16))
+        for b in ("b1", "b2", "b3"):
+            sent(db, "+919111111111", b, utc(2026, 11, 16))
+        people = [{"phone": "+919876543210", "opted_in": True},
+                  {"phone": "+919111111111", "opted_in": True, "name": "Ravi"}]
+        out = ra.classify_people(db, T1, people, now=NOW)
+        self.assertEqual(out["over_limit_people"], [
+            {"phone": "919111111111", "name": "Ravi", "this_week": 3},
+            {"phone": "919876543210", "name": "Asha", "this_week": 2}])
+
+    def test_preview_numbers_carry_the_limit_and_the_week(self):
+        db = FakeSupabase()
+        set_limit(db, "4")
+        out = ra.preview_numbers(db, T1, [], now=NOW)
+        self.assertEqual((out["weekly_limit"], out["week_start"], out["week_end"]), (4, "2026-11-15", "2026-11-21"))
+        self.assertNotIn("monthly_limit", out)
 
     def test_include_opted_out_lets_stopped_people_through(self):
         db = FakeSupabase()
@@ -238,7 +321,7 @@ class GroupAudienceTests(unittest.TestCase):
         resolved = ra.resolve_group(self.db, OWNER, self.picked)
         people = [{"phone": p["phone"], "opted_in": p["opted_in"]} for p in resolved["people"]]
         for b in ("b1", "b2"):
-            sent(self.db, "+919000000001", b, utc(2026, 11, 5))     # ann already got 2 this month
+            sent(self.db, "+919000000001", b, utc(2026, 11, 16))     # ann already got 2 this week
         out = ra.classify_people(self.db, T1, people, now=NOW)
         self.assertEqual((out["no_opt_in"], out["blocked"], out["over_cap"], out["will_get"]), (2, 1, 1, 0))
 

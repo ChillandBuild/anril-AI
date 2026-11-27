@@ -13,6 +13,7 @@ import {
   formatMoney,
   inShort,
 } from "./chargesText";
+import ReachLimitCard from "./ReachLimitCard";
 
 const BAR_COLOR = { ok: "bg-primary", warn: "bg-amber-500", full: "bg-red-600" } as const;
 
@@ -21,25 +22,27 @@ export default function MetaChargesPage() {
     revalidateOnFocus: false,
   });
 
-  if (error) {
-    return (
-      <LoadError message={error instanceof Error ? error.message : "Something went wrong."} onRetry={() => mutate()} />
-    );
-  }
-  if (isLoading || !data) return <LoadingState />;
-
   return (
     <div className="w-full space-y-4">
-      <div>
-        <p className="text-sm text-ink-secondary" data-testid="in-short">
-          {inShort(data.charges, data.ai_replies)}
-        </p>
-      </div>
+      <ReachLimitCard />
+      {error ? (
+        <LoadError message={error instanceof Error ? error.message : "Something went wrong."} onRetry={() => mutate()} />
+      ) : isLoading || !data ? (
+        <LoadingState />
+      ) : (
+        <>
+          <div>
+            <p className="text-sm text-ink-secondary" data-testid="in-short">
+              {inShort(data.charges, data.ai_replies)}
+            </p>
+          </div>
 
-      <div className="min-w-0 space-y-4">
-        <ChargesCard charges={data.charges} />
-        <AiRepliesCard ai={data.ai_replies} />
-      </div>
+          <div className="min-w-0 space-y-4">
+            <ChargesCard charges={data.charges} />
+            <AiRepliesCard ai={data.ai_replies} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -47,7 +50,6 @@ export default function MetaChargesPage() {
 function LoadingState() {
   return (
     <div className="w-full space-y-4" aria-busy="true">
-      <Skeleton className="h-16 w-full" />
       <Skeleton className="h-64 w-full" />
     </div>
   );

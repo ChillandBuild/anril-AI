@@ -43,3 +43,11 @@ export function inShort(charges: MetaCharges, ai: AiReplies): string {
       : `You have used ${formatCount(ai.used)} AI ${ai.used === 1 ? "reply" : "replies"} this month.`;
   return `${first} ${second}`;
 }
+
+/** Why the weekly limit can't be saved, or null when it's fine. */
+export function reachLimitProblem(text: string, min: number, max: number): string | null {
+  const t = text.trim();
+  if (!/^\d+$/.test(t)) return `Enter a whole number from ${min} to ${max}.`;
+  const n = Number(t);
+  return n < min || n > max ? `Enter a whole number from ${min} to ${max}.` : null;
+}

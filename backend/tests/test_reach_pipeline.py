@@ -1,5 +1,5 @@
 """Reach routes and send loop with a Customers group or an uploaded list, on the fake database:
-the confirm preview, group sends reusing the pipeline, the monthly-limit / blocked skips,
+the confirm preview, group sends reusing the pipeline, the weekly-limit / blocked skips,
 the History numbers (skipped, paid within 7 days) and permissions."""
 import asyncio
 import json
@@ -75,7 +75,7 @@ class ReachBase(unittest.TestCase):
         lead("dev", "+919000000004", blocked_at="2026-11-01")
         lead("eli", "+919000000005")
         lead("fay", "+919000000006")
-        # eli already got two Reach campaigns this month.
+        # eli already got two Reach campaigns this week.
         for b in ("b1", "b2"):
             self.db.rows("broadcast_recipients").append({
                 "id": str(uuid.uuid4()), "tenant_id": T1, "broadcast_id": b, "phone": "+919000000005",
@@ -108,7 +108,11 @@ class PreviewTests(ReachBase):
         self.assertEqual(b["group"]["name"], "Insta Hot")
         self.assertEqual((b["in_audience"], b["said_stop"], b["no_opt_in"], b["blocked"], b["over_cap"], b["will_get"]),
                          (6, 1, 1, 1, 1, 2))
-        self.assertEqual(b["monthly_limit"], 2)
+        self.assertEqual(b["weekly_limit"], 2)
+        self.assertNotIn("monthly_limit", b)
+        self.assertRegex(b["week_start"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertRegex(b["week_end"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertEqual(b["over_limit_people"], [{"phone": "919000000005", "name": "eli", "this_week": 2}])
         self.assertEqual((b["rate_inr"], b["cost_inr"]), (0.8631, round(2 * 0.8631, 2)))
         # Every person is in exactly one bucket.
         self.assertEqual(b["in_audience"], sum(b[k] for k in
@@ -118,6 +122,24 @@ class PreviewTests(ReachBase):
         leads = [{"phone": p, "opt_in_source": "website"} for p in ("+919000000005", "+919000000004", "+919777777777")]
         b = self.post({"leads": leads}).json()
         self.assertEqual((b["audience"], b["over_cap"], b["blocked"], b["will_get"]), ("list", 1, 1, 1))
+
+    def test_preview_uses_the_clients_own_number(self):
+        self.db.rows("app_settings").append(
+            {"tenant_id": T1, "key": "reach_weekly_limit", "value": "3", "is_secret": False})
+        b = self.post({"group_id": self.group}).json()
+        self.assertEqual(b["weekly_limit"], 3)
+        self.assertEqual(b["over_cap"], 0)
+        self.assertEqual(b["over_limit_people"], [])
+
+    def test_uploaded_contact_over_the_limit_is_listed_with_the_csv_name(self):
+        for bid in ("b1", "b2"):
+            self.db.rows("broadcast_recipients").append({
+                "id": str(uuid.uuid4()), "tenant_id": T1, "broadcast_id": bid, "phone": "+919888888888",
+                "send_status": "sent", "created_at": now_iso(seconds=-5)})
+        leads = [{"phone": "+919888888888", "name": "Zed From Csv", "opt_in_source": "website"}]
+        b = self.post({"leads": leads}).json()
+        self.assertEqual(b["over_limit_people"],
+                         [{"phone": "919888888888", "name": "Zed From Csv", "this_week": 2}])
 
     def test_another_tenants_group_is_not_found(self):
         self.assertEqual(self.post({"group_id": U("theirs")}).status_code, 404)
@@ -151,7 +173,7 @@ class GroupSendTests(ReachBase):
         self.assertEqual(kw["rejected"], [])
         self.assertEqual(kw["phone_to_lead_id"]["+919000000001"], U("ann"))
         self.assertEqual(kw["blocked_keys"], {"919000000004"})
-        self.assertEqual(kw["monthly_limit_keys"], {"919000000005"})
+        self.assertEqual(kw["weekly_limit_keys"], {"919000000005"})
         self.assertEqual(kw["body"].csv_file_name, "Group: Insta Hot")
         self.assertFalse(kw["body"].include_opted_out)
         # Customers keep their source, name and score: nothing was re-saved as an "upload".
@@ -197,7 +219,7 @@ class SendLoopTests(ReachBase):
                 phone_to_lead_id={l.phone: None for l in leads}, phone_to_lead_name={},
                 all_opted_out_phones=set(), tag_opted_out_phones=set(), globally_opted_out_phones=set(),
                 negative_reply_phones=set(), tpl_body="", tpl_lang="en", tpl_header={}, _has_fail_reason=True,
-                blocked_keys=blocked, monthly_limit_keys=over))
+                blocked_keys=blocked, weekly_limit_keys=over))
         return send
 
     def test_capped_and_blocked_people_are_skipped_not_sent_and_not_failed(self):
@@ -208,13 +230,13 @@ class SendLoopTests(ReachBase):
         rows = {r["phone"]: r for r in self.db.rows("broadcast_recipients") if r["broadcast_id"] == "live"}
         self.assertEqual(rows["+919000000001"]["send_status"], "sent")
         self.assertEqual((rows["+919000000005"]["send_status"], rows["+919000000005"]["fail_reason"]),
-                         ("opted_out_skip", "monthly_limit"))
+                         ("opted_out_skip", "weekly_limit"))
         self.assertEqual(rows["+919000000004"]["fail_reason"], "blocked")
         result = json.loads(self.db.rows("scheduled_broadcasts")[0]["result"])
-        self.assertEqual((result["sent"], result["failed"], result["skipped_monthly_limit"], result["skipped_blocked"]),
+        self.assertEqual((result["sent"], result["failed"], result["skipped_weekly_limit"], result["skipped_blocked"]),
                          (1, 0, 1, 1))
         entry = json.loads(next(r for r in self.db.rows("app_settings") if r["key"] == "broadcast_history")["value"])[0]
-        self.assertEqual((entry["sent"], entry["failed"], entry["skipped_monthly_limit"], entry["skipped_blocked"]),
+        self.assertEqual((entry["sent"], entry["failed"], entry["skipped_weekly_limit"], entry["skipped_blocked"]),
                          (1, 0, 1, 1))
 
     def test_the_classifier_counts_skips_apart_from_failures_and_opt_outs(self):
@@ -222,9 +244,114 @@ class SendLoopTests(ReachBase):
                        for p in ("+919000000001", "+919000000004", "+919000000005")])
         out = upload._classify_broadcast_outcomes(self.db, T1, "live", now_iso())
         c = out["counts"]
-        self.assertEqual((c["sent"], c["failed"], c["opted_out"], c["skipped_monthly_limit"], c["skipped_blocked"]),
+        self.assertEqual((c["sent"], c["failed"], c["opted_out"], c["skipped_weekly_limit"], c["skipped_blocked"]),
                          (1, 0, 0, 1, 1))
         self.assertEqual(out["failures"], [])
+
+    def test_the_classifier_counts_weekly_and_old_monthly_skips_apart(self):
+        for phone, why in (("+919000000011", "weekly_limit"), ("+919000000012", "monthly_limit")):
+            self.db.rows("broadcast_recipients").append({
+                "id": str(uuid.uuid4()), "tenant_id": T1, "broadcast_id": "old", "phone": phone,
+                "send_status": "opted_out_skip", "fail_reason": why, "created_at": now_iso(seconds=-5)})
+        c = upload._classify_broadcast_outcomes(self.db, T1, "old", now_iso())["counts"]
+        self.assertEqual((c["skipped_weekly_limit"], c["skipped_monthly_limit"]), (1, 1))
+        self.assertEqual((c["failed"], c["opted_out"], c["sent"]), (0, 0, 0))
+
+    def test_tag_stats_skip_weekly_limit_rows(self):
+        from app.routes import tags
+        self.db.rows("broadcast_tags").append({"id": "tag1", "tenant_id": T1, "name": "Diwali"})
+        for i, (status, why) in enumerate((("sent", None), ("opted_out_skip", "weekly_limit"),
+                                           ("opted_out_skip", "monthly_limit"), ("opted_out_skip", "blocked"),
+                                           ("failed", None))):
+            self.db.rows("broadcast_recipients").append({
+                "id": f"tg{i}", "tenant_id": T1, "broadcast_id": "bt", "tag_id": "tag1", "lead_id": None,
+                "phone": f"+91900000020{i}", "send_status": status, "fail_reason": why,
+                "created_at": now_iso(seconds=-5)})
+        with patch("app.routes.tags.get_supabase", return_value=self.db):
+            row = tags.get_tag_stats(tenant_id=T1)["data"][0]
+        # Only the real attempts count: the sent one and the failed one; the three skips are not attempts.
+        self.assertEqual((row["total_sent"], row["failed"], row["opted_out"]), (2, 1, 0))
+
+
+class PicksTests(ReachBase):
+    """Confirm-step picks: people over the weekly limit that the client chose to send to anyway."""
+
+    def over_people(self, n):
+        phones = [f"+9190000001{i:02d}" for i in range(n)]
+        for phone in phones:
+            for b in ("b1", "b2"):
+                self.db.rows("broadcast_recipients").append({
+                    "id": str(uuid.uuid4()), "tenant_id": T1, "broadcast_id": b, "phone": phone,
+                    "send_status": "sent", "created_at": now_iso(seconds=-5)})
+        return phones
+
+    def post(self, phones, picks, lead_extra=None, run_loop=True, **extra):
+        """The real bulk_send; the send loop runs for real (Meta call faked) unless run_loop is False."""
+        body = {"leads": [{"phone": p, "opt_in_source": "website", **(lead_extra or {})} for p in phones],
+                "template_name": "diwali", "schedule_type": "now", "over_limit_picks": picks, **extra}
+        send = AsyncMock(return_value={"messages": [{"id": "wamid.1"}]})
+        held = {}
+        with patch("app.routes.upload.template_status", return_value="APPROVED"), \
+                patch("app.routes.upload.get_best_number", new=AsyncMock(return_value={"id": "n1"})), \
+                patch("app.routes.upload.send_template_message", new=send), \
+                patch("app.routes.upload.SenderPicker", _Picker), \
+                patch("app.routes.upload.new_lead_score_and_segment", return_value=(10, "C")), \
+                patch("app.routes.upload.asyncio.create_task", side_effect=lambda c: held.setdefault("c", c)):
+            res = self.client.post("/api/v1/upload/bulk-send", json=body)
+            self.assertEqual(res.status_code, 200, res.text)
+            if run_loop and "c" in held:
+                asyncio.run(held["c"])
+        return res.json(), send
+
+    def test_picked_people_over_the_limit_are_sent_and_the_rest_skipped(self):
+        phones = self.over_people(3)
+        out, send = self.post(phones, [phones[0], phones[1]])
+        self.assertEqual(sorted(c.kwargs["to_number"] for c in send.call_args_list), sorted(phones[:2]))
+        bid = out["broadcast_id"]
+        rows = {r["phone"]: r for r in self.db.rows("broadcast_recipients") if r["broadcast_id"] == bid}
+        self.assertEqual((rows[phones[2]]["send_status"], rows[phones[2]]["fail_reason"]),
+                         ("opted_out_skip", "weekly_limit"))
+        result = json.loads(next(r for r in self.db.rows("scheduled_broadcasts") if r["id"] == bid)["result"])
+        self.assertEqual((result["sent"], result["skipped_weekly_limit"]), (2, 1))
+
+    def test_a_pick_in_another_spelling_still_counts(self):
+        # eli (+919000000005) is already over the limit in the base fixture; the CSV spells her differently.
+        _, send = self.post(["09000000005"], ["+91 90000 00005"])
+        self.assertEqual(send.await_count, 1)
+        # Control: the same person with no pick is skipped.
+        _, send = self.post(["09000000005"], [])
+        self.assertEqual(send.await_count, 0)
+
+    def test_a_browser_sent_per_person_flag_is_ignored(self):
+        phones = self.over_people(1)
+        _, send = self.post(phones, [], lead_extra={"send_over_limit": True})
+        self.assertEqual(send.await_count, 0)
+
+    def test_scheduled_leads_json_carries_the_pick(self):
+        phones = self.over_people(2)
+        self.post(phones, [phones[1]], run_loop=False, schedule_type="scheduled", schedule_at=day_time_iso(1))
+        flags = {l["phone"]: l["send_over_limit"] for l in self.db.rows("scheduled_broadcasts")[0]["leads_json"]}
+        self.assertEqual(flags, {phones[0]: False, phones[1]: True})
+
+    def test_deferred_leads_keep_the_pick(self):
+        class _Empty(_Picker):
+            def next(self):
+                return None
+        leads = [upload.BulkLeadItem(phone="+919000000101", opt_in_source="website", send_over_limit=True)]
+        body = upload.BulkSendRequest(leads=leads, template_name="diwali", schedule_type="now")
+        self.db.rows("scheduled_broadcasts").append({"id": "live", "tenant_id": T1, "status": "running"})
+        with patch("app.routes.upload.SenderPicker", _Empty), \
+                patch("app.routes.upload.next_send_time", return_value=datetime.now(timezone.utc)), \
+                patch("app.routes.upload.send_template_message", new=AsyncMock()):
+            asyncio.run(upload._execute_immediate_send(
+                tenant_id=T1, broadcast_id="live", broadcast_timestamp=datetime.now(timezone.utc), body=body,
+                eligible=leads, rejected=[], invalid_leads=[], all_phones=["+919000000101"],
+                phone_to_lead_id={}, phone_to_lead_name={}, all_opted_out_phones=set(),
+                tag_opted_out_phones=set(), globally_opted_out_phones=set(), negative_reply_phones=set(),
+                tpl_body="", tpl_lang="en", tpl_header={}, _has_fail_reason=True))
+        later = [r for r in self.db.rows("scheduled_broadcasts") if r["id"] != "live"]
+        self.assertEqual(len(later), 1)
+        self.assertTrue(later[0]["leads_json"][0]["send_over_limit"])
 
 
 class SendNowPushbackTests(ReachBase):

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MetaCharges } from "@/lib/connectionsApi";
-import { barTone, barWidth, formatCount, formatMoney, inShort } from "./chargesText";
+import { barTone, barWidth, formatCount, formatMoney, inShort, reachLimitProblem } from "./chargesText";
 
 const charges = (cost: number, currency = "INR"): MetaCharges => ({
   available: true,
@@ -62,5 +62,14 @@ describe("inShort", () => {
     expect(inShort(charges(0), { used: 1200, included: null, pct: null })).toBe(
       "Meta charged ₹0 this month. You have used 1,200 AI replies this month.",
     );
+  });
+});
+
+describe("reachLimitProblem", () => {
+  it("accepts a whole number in range", () => expect(reachLimitProblem("5", 1, 50)).toBeNull());
+  it("rejects anything else", () => {
+    for (const t of ["0", "51", "2.5", "", "abc"]) {
+      expect(reachLimitProblem(t, 1, 50)).toBe("Enter a whole number from 1 to 50.");
+    }
   });
 });

@@ -28,7 +28,15 @@ export type CallingOverview = {
   rules: { daily_target_calls: number; calling_hours: string };
 };
 
+export type ReachLimit = { weekly_limit: number; default: number; min: number; max: number };
+
 export const connectionsApi = {
   metaCharges: () => apiFetch<MetaChargesResponse>("/api/v1/connections/meta-charges"),
   calling: () => apiFetch<CallingOverview>("/api/v1/connections/calling"),
+  reachLimit: () => apiFetch<ReachLimit>("/api/v1/connections/reach-limit"),
+  saveReachLimit: (weekly_limit: number) =>
+    apiFetch<{ weekly_limit: number }>("/api/v1/connections/reach-limit", {
+      method: "PUT",
+      body: JSON.stringify({ weekly_limit }),
+    }),
 };

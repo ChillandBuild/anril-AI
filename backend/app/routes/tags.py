@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from app.db.supabase import get_supabase
 from app.dependencies.tenant import get_tenant_id, require_permission
+from app.services import reach_audience
 from app.services.delivery_status import nearest_status, parse_ts as _parse_ts
 
 logger = logging.getLogger(__name__)
@@ -215,8 +216,8 @@ def get_tag_stats(tenant_id: str = Depends(get_tenant_id)):
         tid = r.get("tag_id")
         if not tid:
             continue
-        if (r.get("send_status") or "") == "opted_out_skip" and (r.get("fail_reason") or "") in ("monthly_limit", "blocked"):
-            continue  # skipped on purpose at send time (Reach monthly limit / blocked): not an attempt, not an opt-out
+        if (r.get("send_status") or "") == "opted_out_skip" and (r.get("fail_reason") or "") in reach_audience.SKIP_REASONS:
+            continue  # skipped on purpose at send time (Reach weekly limit / blocked): not an attempt, not an opt-out
         sent_c[tid] += 1  # every attempt is one "sent" (the denominator)
 
         lid = r.get("lead_id")

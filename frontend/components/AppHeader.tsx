@@ -34,7 +34,7 @@ const SETTINGS_ROUTE_DESCRIPTIONS: Record<string, string> = {
   payments: "How customers pay you, and how much they pay first.",
   target: "Set your monthly target once. Home shows how close you are.",
   display: "Make Anril easy to read on this screen.",
-  "meta-charges": "What Meta charged this month, and the AI replies you used.",
+  "meta-charges": "What Meta charged this month, the AI replies you used, and how many broadcasts one person can get each week.",
   alerts: "Choose which alerts reach you, and when.",
   "calling-rules": "When telecallers can call, how many calls a day, who uses a SIM, and leave.",
   "your-account": "Who's signed in, your password and passkeys.",
