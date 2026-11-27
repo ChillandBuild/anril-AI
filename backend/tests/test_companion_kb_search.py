@@ -67,6 +67,10 @@ def fx(monkeypatch):
         # Counted when the search is ASKED for, not when a worker thread runs it: a books search that
         # step A cancels may never reach the database, and whether it does is thread timing.
         fakes.tiers.append(tier)
+        # A real database call takes time, so other tasks get a turn while it runs. The fake answers at
+        # once, and on Python 3.13 (what CI runs) a thread job that is already finished gives no turn:
+        # step A then answers and cancels the early books search before it has even started.
+        await asyncio.sleep(0)
         return await real(tenant_id, collection_id, tier, **kw)
 
     monkeypatch.setattr(store_search, "match_chunks", counted)
