@@ -61,13 +61,15 @@ def fx(monkeypatch):
     monkeypatch.setattr(memory_embed, "embed", fake_embed)
     monkeypatch.setattr(kb_judge, "judge", fake_judge)
 
-    real = db.rpc_handlers["match_companion_kb_chunks"]
+    real = store_search.match_chunks
 
-    def counted(params):
-        fakes.tiers.append(params["p_tier"])
-        return real(params)
+    async def counted(tenant_id, collection_id, tier, **kw):
+        # Counted when the search is ASKED for, not when a worker thread runs it: a books search that
+        # step A cancels may never reach the database, and whether it does is thread timing.
+        fakes.tiers.append(tier)
+        return await real(tenant_id, collection_id, tier, **kw)
 
-    db.rpc_handlers["match_companion_kb_chunks"] = counted
+    monkeypatch.setattr(store_search, "match_chunks", counted)
 
     db.add("companion_kb_collections", id="c1", tenant_id=A, name="Astrology books")
     db.add("companion_kb_documents", id="main", tenant_id=A, collection_id="c1", title="Main resource", tier=1)
