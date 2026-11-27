@@ -13,7 +13,9 @@ from fastapi import HTTPException
 from app.services import auto_messages as am
 from app.services.blocked_guard import RecipientBlocked
 from app.services import private_send as private_send_svc
-from app.services.intake import _astro_phone_number_id, _log_partner_message, _partner_error, _partner_reference
+from app.services.intake import (
+    _INVALID_PHONE_ERROR, _astro_phone_number_id, _log_partner_message, _partner_error, _partner_reference,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +97,7 @@ async def partner_send_event(payload: dict, tenant_id: str, db) -> tuple[int, di
         )
     phone = normalize_phone(payload.get("phone"))
     if not phone:
-        return _partner_error(400, "invalid_phone", "phone is not a valid mobile number. Include the country code, e.g. 94771234567")
+        return _partner_error(400, "invalid_phone", _INVALID_PHONE_ERROR)
 
     if private_send_svc.has_active_key(db, tenant_id):
         return _partner_error(409, "private_send_on", "This account sends from its own server")

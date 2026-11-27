@@ -188,6 +188,7 @@ def test_event_mode_invalid_phone_is_400(db):
     _order_rule(db)
     res, send = _post(_event_body(phone="12345"), db)
     assert res.status_code == 400 and res.json()["code"] == "invalid_phone"
+    assert "+6591234567" in res.json()["error"]
     send.assert_not_awaited()
 
 

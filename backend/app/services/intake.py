@@ -2599,6 +2599,13 @@ def _partner_error(status: int, code: str, error: str) -> tuple[int, dict]:
     return status, {"ok": False, "code": code, "error": error}
 
 
+# Partners copy the example, so it carries the "+": without it a 10-digit overseas number
+# (Singapore 65 + 8 digits) is read as an Indian mobile and reaches a stranger.
+_INVALID_PHONE_ERROR = (
+    "phone is not a valid mobile number. Outside India, start with + and the country code, e.g. +6591234567"
+)
+
+
 async def _partner_switched_off(tenant_id: str) -> tuple[int, dict] | None:
     """Settings > Auto-Reply: Instant Templates master or the Partner API row is off."""
     from app.services.automation_guards import instant_template_allowed
@@ -2719,7 +2726,7 @@ async def partner_send_template(payload: dict, tenant_id: str, db=None) -> tuple
 
     phone = normalize_phone(payload.get("phone"))
     if not phone:
-        return _partner_error(400, "invalid_phone", "phone is not a valid mobile number. Include the country code, e.g. 94771234567")
+        return _partner_error(400, "invalid_phone", _INVALID_PHONE_ERROR)
 
     if _has_dynamic_header_or_url(template):
         return _partner_error(400, "unsupported_template", "Only templates with body variables can be sent")
@@ -2792,7 +2799,7 @@ async def partner_send_text(payload: dict, tenant_id: str, db=None) -> tuple[int
 
     phone = normalize_phone(payload.get("phone"))
     if not phone:
-        return _partner_error(400, "invalid_phone", "phone is not a valid mobile number. Include the country code, e.g. 94771234567")
+        return _partner_error(400, "invalid_phone", _INVALID_PHONE_ERROR)
 
     reference = _partner_reference(payload)
     try:

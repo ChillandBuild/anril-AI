@@ -302,6 +302,8 @@ def test_invalid_phone_is_400():
     res, send, _ = _post(TEMPLATE_URL, _template_body(phone="12345"), _db(APPROVED))
     assert res.status_code == 400
     assert res.json()["code"] == "invalid_phone"
+    # The example is what a partner copies: it has to show the "+" (65 + 8 digits reads as Indian).
+    assert "+6591234567" in res.json()["error"]
     send.assert_not_awaited()
 
 
@@ -404,6 +406,7 @@ def test_text_invalid_phone_is_400():
     res, _, _ = _post(TEXT_URL, _text_body(phone="abc"), _db())
     assert res.status_code == 400
     assert res.json()["code"] == "invalid_phone"
+    assert "+6591234567" in res.json()["error"]
 
 
 def test_text_send_failure_is_502():

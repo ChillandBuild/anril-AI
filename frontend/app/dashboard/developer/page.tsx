@@ -442,7 +442,7 @@ export default function DeveloperPage() {
             rows={[
               ["tenant_id", "yes", "Your Tenant ID from above."],
               ["template_code", "yes", "The 6-digit Anril ID of an APPROVED template (see Anril ID below)."],
-              ["phone", "yes", <>Recipient. <code className="font-mono">+919876543210</code>, <code className="font-mono">919876543210</code> or a bare 10-digit Indian mobile all work.</>],
+              ["phone", "yes", <>Recipient. <code className="font-mono">+919876543210</code>, <code className="font-mono">919876543210</code> or a bare 10-digit Indian mobile all work. Outside India, always start with <code className="font-mono">+</code> and the country code, like <code className="font-mono">+6591234567</code>: without the <code className="font-mono">+</code>, a 10-digit number is read as Indian.</>],
               ["variables", "no", "List of strings for the body placeholders {{1}}, {{2}}… in order. Extra values are dropped; too few is a 400."],
               ["reference", "no", "Up to 120 characters, stored with the log only. Use your own id (e.g. order:42) so you can trace a send later."],
             ]}
@@ -513,7 +513,7 @@ export default function DeveloperPage() {
             ["400", "invalid_json", "Body is not valid JSON."],
             ["400", "invalid_request", "template_code missing (event on an Event account), variables not a list, text empty or too long."],
             ["400", "wrong_mode", "The call does not match how this account sends: an event on a Template ID account, or a template_code on an Event account. Switch the setting in Send above, or change the call."],
-            ["400", "invalid_phone", "Phone could not be read as a mobile number."],
+            ["400", "invalid_phone", "Phone could not be read as a mobile number. Outside India, start with + and the country code."],
             ["400", "variables_mismatch", "Fewer values than the template's placeholders."],
             ["400", "unsupported_template", "Template has a header or URL-button variable."],
             ["404", "template_not_found", "No template in this account with that Anril ID."],

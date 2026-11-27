@@ -246,27 +246,34 @@ def normalize_gender(raw) -> str | None:
     return "F" if female else "M"
 
 
+# A plus sign (plain or full-width "＋") with no digit before it.
+_PLUS_BEFORE_DIGITS = re.compile(r"[^\d+＋]*[+＋]")
+
+
 def normalize_phone(raw, default_cc: str = "+91") -> str | None:
     """Return an E.164 phone number, or None when it is not a plausible number."""
     text = _text(raw)
     if not text:
         return None
 
-    had_plus = text.startswith("+")
     cc = re.sub(r"\D", "", default_cc or "")
-    digits = re.sub(r"\D", "", text).lstrip("0")
+    all_digits = re.sub(r"\D", "", text)
+    digits = all_digits.lstrip("0")
     if not cc or not digits:
         return None
 
-    if had_plus:
+    # "+" and "00" both say a country code follows. They are the only way to tell: Singapore's
+    # 65 + 8 digits is exactly 10 digits starting with 6, and +91 65xxxxxxxx is a live Indian range.
+    # The "+" counts anywhere before the first digit: "(+65) 9123 4567", "tel: +65…".
+    if _PLUS_BEFORE_DIGITS.match(text) or all_digits.startswith("00"):
         return _international_phone(digits)
     if len(digits) == 10:
         national = digits
     elif digits.startswith(cc) and len(digits) == len(cc) + 10:
         national = digits[len(cc):]
     else:
-        # Partners send country code + number with no "+" (94771234567), so
-        # anything that is not a national number is read as international.
+        # Partners send country code + number with no "+" (94771234567), so anything that is
+        # not a national number is read as international. A 10-digit one never gets here.
         return _international_phone(digits)
 
     if cc == "91" and national[0] not in "6789":

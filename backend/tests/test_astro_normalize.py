@@ -201,7 +201,6 @@ def test_normalize_gender_female_is_not_read_as_male_substring():
         "+919345679286",
         "91-9345679286",
         "919345679286",
-        "009345679286",
         "00919345679286",
         "09345679286",
         "+91-93456-79286",
@@ -236,6 +235,40 @@ def test_normalize_phone_honours_default_cc():
 )
 def test_normalize_phone_reads_foreign_country_code_without_plus(raw, expected):
     assert normalize_phone(raw) == expected
+
+
+# Singapore is 65 + 8 digits: exactly 10 digits starting with 6, the shape of an Indian mobile
+# (2026-11-27: AstroTamil held back 4 messages to a Singapore customer for this reason).
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "+6591234567",
+        "+65 9123 4567",
+        "006591234567",
+        "0065 9123 4567",
+        # The "+" counts wherever it sits before the first digit, not only as the first character.
+        "(+65) 9123 4567",
+        "[+65] 91234567",
+        "tel: +65 91234567",
+        "＋6591234567",  # full-width plus, as some phone keyboards type it
+    ],
+)
+def test_normalize_phone_reads_singapore_with_plus_or_00(raw):
+    assert normalize_phone(raw) == "+6591234567"
+
+
+def test_normalize_phone_cannot_tell_bare_singapore_from_india():
+    # Not a bug to fix here: +91 65xxxxxxxx is a live Indian range, so 10 bare digits stay Indian.
+    # The sender has to add "+" or "00"; the invalid_phone message and the Developer page say so.
+    assert normalize_phone("6591234567") == "+916591234567"
+
+
+def test_normalize_phone_reads_00_as_a_country_code_even_before_an_indian_looking_number():
+    # "00" promises a country code follows, so a bare Indian mobile padded with "00" is no longer
+    # read as Indian. Most such inputs are refused (93 45679286 is no country's number)...
+    assert normalize_phone("009345679286") is None
+    # ...and about 1 in 15 happens to be a real number abroad (95 = Myanmar). Known trade-off.
+    assert normalize_phone("009507325237") == "+957325237"
 
 
 @pytest.mark.parametrize("raw", ["9477123456789", "947712345", "+9477123", "60123"])
