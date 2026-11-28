@@ -7,7 +7,8 @@ import json
 
 import pytest
 
-from app.companion.chart_check import find_claims, find_wrong, parse_app_data, planet_name, redo_note, sign_name
+from app.companion.chart_check import (check_claim, find_claims, find_wrong, parse_app_data, planet_name, redo_note,
+                                       sign_name)
 
 CHART = {
     "overview": {"rasi": "Simmam (Leo)", "lagnam": "Magaram (Capricorn)"},
@@ -385,6 +386,37 @@ def test_now_and_the_next_dasa_in_one_sentence_is_not_flagged():
     assert find_wrong(c, "இப்போ நடக்குற ராகு தசை, செவ்வாய் புத்தி டிசம்பர் 2026-ல் முடியுது, "
                          "அதன்பிறகு குரு தசை ஆரம்பிக்கிறது.") == []
     assert find_wrong(c, "இப்போ குரு தசை நடக்குது.")   # a wrong "now" alone is still caught
+
+
+# AstroTamil item 1 (27 Nov): the next dasa's bhuktis too. Mars is the running bhukti AND a bhukti of the
+# next (Guru) dasa: every dasa has all 9 planets, so a planet can be listed twice.
+NEXT_DASA_CHART = {**ISO_CHART, "dasa": {**ISO_CHART["dasa"], "bhuktis_of_next_dasa": [
+    ["Jupiter", "2026-12-11", "2029-01-28"], ["Saturn", "2029-01-28", "2031-08-10"],
+    ["Mercury", "2031-08-10", "2033-11-16"], ["Ketu", "2033-11-16", "2034-10-22"],
+    ["Venus", "2034-10-22", "2037-06-22"], ["Sun", "2037-06-22", "2038-04-10"],
+    ["Moon", "2038-04-10", "2039-08-10"], ["Mars", "2039-08-10", "2040-07-16"],
+    ["Rahu", "2040-07-16", "2042-12-11"]]}}
+
+
+def test_the_next_dasas_bhuktis_are_read_once_each():
+    c = parse_app_data(json.dumps(NEXT_DASA_CHART))
+    assert [b.planet for b in c.bhuktis][:3] == ["செவ்வாய்", "குரு", "சனி"]   # running, then Guru once (also next_bhukti)
+    assert len(c.bhuktis) == 10 and c.bhuktis[0].start.isoformat() == "2025-11-22"
+
+
+def test_a_wrong_year_for_a_next_dasa_bhukti_is_caught():
+    """Before: Budhan bhukti was not listed, so "2028" (live) could not be checked. Here Budhan runs 2031-2033."""
+    c = parse_app_data(json.dumps(NEXT_DASA_CHART))
+    assert find_wrong(c, "புதன் புத்தி 2028-ல வரும்.")
+    assert find_wrong(c, "புதன் புத்தி 2032-ல வரும்.") == []
+
+
+def test_a_planet_listed_twice_is_checked_against_either_period():
+    c = parse_app_data(json.dumps(NEXT_DASA_CHART))
+    later = {"kind": "period", "level": "bhukti", "planet": "செவ்வாய்", "when": "later", "start": "2039-08"}
+    assert check_claim(c, later) == ("ok", "")
+    assert check_claim(c, {**later, "start": "2035-01"})[0] == "wrong"
+    assert check_claim(c, {**later, "when": "current"})[0] == "wrong"   # the running Mars started 2025
 
 
 def test_a_moves_list_under_another_name_is_read():

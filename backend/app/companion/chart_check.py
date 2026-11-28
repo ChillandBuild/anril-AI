@@ -222,7 +222,7 @@ def _check_period(c: Chart, cl: dict) -> tuple[str, str]:
                 return "unchecked", "no bhukti in chart"
             if planet != c.bhuktis[0].planet:
                 return "wrong", f"running bhukti is {c.bhuktis[0].planet} புத்தி, not {planet} புத்தி"
-        found = [b for b in c.bhuktis if b.planet == planet]
+        found = [c.bhuktis[0]] if when == "current" else [b for b in c.bhuktis if b.planet == planet]
         if not found:
             listed_to = c.bhuktis[-1].end if c.bhuktis else None
             first = start or (window[0] if window else None)
@@ -230,7 +230,13 @@ def _check_period(c: Chart, cl: dict) -> tuple[str, str]:
                                         else _n(*first) < _n(listed_to.year, listed_to.month)):
                 return "wrong", f"no {planet} புத்தி before {listed_to:%m-%Y}"
             return "unchecked", f"{planet} புத்தி is not in the chart's list"
-        period = found[0]
+        results = [_against(period, planet, word, start, end, window) for period in found]
+        return next((r for r in results if r[0] == "ok"), results[0])   # right about either Mars புத்தி = right
+    return _against(period, planet, word, start, end, window)
+
+
+def _against(period: "Period", planet: str, word: str, start, end, window) -> tuple[str, str]:
+    """A claim's start, end and window months against one listed period."""
     if start and not _near(start, period.start):
         return "wrong", f"{planet} {word} starts {period.start:%m-%Y}, not {_show(start)}"
     if end and period.end and not _near(end, period.end):
@@ -400,8 +406,10 @@ def parse_chart_json(data: dict) -> Chart:
     if (b := planet_name(_get(now, "bhukti"))) and (bs := _loose_date(_get(now, "bhukti_from"))):
         c.bhuktis.append(Period(b, bs, _loose_date(_get(now, "bhukti_to"))))
         # the next ones, when the app lists them: "next_bhukti": [p, from, to] and/or
-        # "bhuktis_of_this_dasa": [[p, from, to], ...] (the past ones there are left out)
-        rows = [_get(dasa, "next_bhukti")] + list(_get(dasa, "bhuktis_of_this_dasa", "bhuktis") or [])
+        # "bhuktis_of_this_dasa" / "bhuktis_of_next_dasa": [[p, from, to], ...] (the past ones are left out).
+        # A planet can be listed twice (each dasa has all 9 bhuktis): _check_period tries each.
+        rows = [_get(dasa, "next_bhukti")] + list(_get(dasa, "bhuktis_of_this_dasa", "bhuktis") or []) \
+            + list(_get(dasa, "bhuktis_of_next_dasa") or [])
         for row in rows:
             if isinstance(row, (list, tuple)) and len(row) >= 3 and (p := planet_name(row[0])) \
                     and (start := _loose_date(row[1])) and start > bs \

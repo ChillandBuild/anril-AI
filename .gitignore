@@ -81,3 +81,6 @@ videos/*/capture/app-raw/
 /videos/
 output
 # Playwright CLI output (may contain credentials)
+
+# Local chart sample (not committed)
+/Chart.json
