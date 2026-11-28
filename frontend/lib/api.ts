@@ -734,9 +734,10 @@ export interface DialCheckRow {
 }
 
 export interface DialCheck {
-  customer: { id: string; name: string | null; segment: string | null; phone: string | null; came_from: string | null } | null;
+  customer: { id: string; name: string | null; segment: string | null; phone: string | null; came_from: string | null; last_chat_at: string | null } | null;
   checks: DialCheckRow[];
   calling_from: "office" | "sim";
+  office_ready: boolean;
   can_call: boolean;
   blocked_reason: string | null;
 }
@@ -3178,10 +3179,10 @@ export const api = {
       }),
   },
   calls: {
-    initiate: (target: { leadId?: string; phone?: string; callbackJobId?: string }, callerId?: string) =>
+    initiate: (target: { leadId?: string; phone?: string; callbackJobId?: string; mode?: "office" | "sim" }, callerId?: string) =>
       apiFetch<{ call_log_id: string; call_sid: string; status: string; provider: "telecmi" | "sim_basic"; lead_id: string | null; lead_name: string | null; phone?: string | null }>(
         `/api/v1/calls/initiate`,
-        { method: "POST", keepalive: true, body: JSON.stringify({ lead_id: target.leadId, phone: target.phone, caller_id: callerId, callback_job_id: target.callbackJobId }) }
+        { method: "POST", keepalive: true, body: JSON.stringify({ lead_id: target.leadId, phone: target.phone, caller_id: callerId, callback_job_id: target.callbackJobId, mode: target.mode }) }
       ),
     recent: async (limit = 20, callerId?: string, opts?: { today?: boolean }) => {
       const qs = new URLSearchParams({ limit: String(limit) });
@@ -3254,7 +3255,7 @@ export const api = {
     nextLead: (callerId?: string) =>
       apiFetch<Lead>(`/api/v1/calls/next-lead${callerId ? `?caller_id=${callerId}` : ""}`),
     assignmentMode: () =>
-      apiFetch<{ mode: "push" | "pull"; enabled: boolean; calling_provider: "telecmi" | "sim_basic" }>(`/api/v1/calls/assignment-mode`),
+      apiFetch<{ mode: "push" | "pull"; enabled: boolean; calling_provider: "telecmi" | "sim_basic"; office_ready?: boolean }>(`/api/v1/calls/assignment-mode`),
     sendToMobile: (leadId: string, callerId?: string | null) =>
       apiFetch<{
         sent: boolean;

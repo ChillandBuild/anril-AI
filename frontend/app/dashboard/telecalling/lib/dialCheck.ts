@@ -14,6 +14,33 @@ export function callingFromLabel(v: "office" | "sim"): string {
   return v === "sim" ? "Your phone (SIM)" : "Office number";
 }
 
+export type DialMode = "office" | "sim";
+
+/** Office number / My SIM starts on the check's answer for this person, else the business setting. */
+export function defaultDialMode(callingFrom: DialMode | null | undefined, provider: "telecmi" | "sim_basic"): DialMode {
+  return callingFrom ?? (provider === "sim_basic" ? "sim" : "office");
+}
+
+/** Up to two letters for the round avatar; # when there is no name. */
+export function initialsOf(name: string | null | undefined): string {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "#";
+  const letters = words.length === 1 ? words[0][0] : words[0][0] + words[words.length - 1][0];
+  return letters.toUpperCase();
+}
+
+const IST_DAY = (d: Date) => new Date(d.getTime() + 330 * 60_000).toISOString().slice(0, 10);
+
+/** "today", "yesterday" or "N days ago" (Indian calendar days); null when the time is missing or unreadable. */
+export function lastChatWords(iso: string | null | undefined, now: Date = new Date()): string | null {
+  if (!iso) return null;
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return null;
+  const days = Math.round((Date.parse(IST_DAY(now)) - Date.parse(IST_DAY(then))) / 86_400_000);
+  if (days <= 0) return "today";
+  return days === 1 ? "yesterday" : `${days} days ago`;
+}
+
 /** Worth asking the server: 10+ digits and no letters. */
 export function worthChecking(text: string): boolean {
   return !/[a-z]/i.test(text) && text.replace(/\D/g, "").length >= 10;

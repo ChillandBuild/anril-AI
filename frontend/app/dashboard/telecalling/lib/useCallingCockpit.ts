@@ -5,6 +5,7 @@ import { api, Lead, CallLog, Message, TelecallingConfig, type CatalogItem, type 
 import type { NotesResponse, CallbackJob } from "../types";
 import { useActiveCall } from "../../contexts/ActiveCallContext";
 import { fetchNotes, fetchTodayCallbacks, saveNote, createCallback } from "./notes-api";
+import { defaultDialMode, type DialMode } from "./dialCheck";
 import { isMobileDialSurface, openNativeDialer } from "./sim-dialer";
 import { formatIstWhen, fromIstInputs, toIstInputs } from "@/lib/call-wrapup";
 import { applyContext, draftError, draftToPayload, emptyDraft, type WrapupDraft } from "./wrapup-draft";
@@ -68,12 +69,16 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
 
   // Accidental-dial guard
   const [dialCountdown, setDialCountdown] = useState<number | null>(null);
-  const [dialTarget, setDialTarget] = useState<{ leadId?: string; lead?: Lead; phone?: string } | null>(null);
+  const [dialTarget, setDialTarget] = useState<{ leadId?: string; lead?: Lead; phone?: string; viaPad?: boolean } | null>(null);
 
   // Live call card
   const [callDuration, setCallDuration] = useState<number>(0);
   const [callStatus, setCallStatus] = useState<"ringing" | "connected" | "ended" | null>(null);
   const [callingProvider, setCallingProvider] = useState<"telecmi" | "sim_basic">("telecmi");
+  // Manual Dial's Office number / My SIM choice: null until the person picks (or the check sets it), per screen session.
+  const [dialMode, setDialMode] = useState<DialMode | null>(null);
+  const [officeReady, setOfficeReady] = useState(true);
+  const padProvider: "telecmi" | "sim_basic" = (dialMode ?? defaultDialMode(null, callingProvider)) === "sim" ? "sim_basic" : "telecmi";
   const [activeCallProvider, setActiveCallProvider] = useState<"telecmi" | "sim_basic">("telecmi");
   const [simHandoffLead, setSimHandoffLead] = useState<Lead | null>(null);
   const [simHandoffSending, setSimHandoffSending] = useState(false);
@@ -114,6 +119,7 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
       ]);
       if (config) setTelecallingConfig(config);
       setCallingProvider(assignmentMode?.calling_provider ?? (config?.calling_provider as "telecmi" | "sim_basic" | undefined) ?? "telecmi");
+      if (assignmentMode?.office_ready !== undefined) setOfficeReady(assignmentMode.office_ready);
     } catch (err) {
       console.error("Failed to load telecalling config:", err);
     }
@@ -189,16 +195,17 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
     }
   }
 
-  async function executeDial(leadId: string, lead: Lead) {
+  async function executeDial(leadId: string, lead: Lead, viaPad = false) {
     setSelectedLeadId(leadId);
-    if (callingProvider === "sim_basic" && !isMobileDialSurface()) {
+    const provider = viaPad ? padProvider : callingProvider;
+    if (provider === "sim_basic" && !isMobileDialSurface()) {
       setSimHandoffLead(lead);
       return;
     }
     setDialing(leadId);
     try {
       const res = await api.calls.initiate(
-        { leadId, callbackJobId: selectedCallbackJobId ?? undefined },
+        { leadId, callbackJobId: selectedCallbackJobId ?? undefined, mode: viaPad ? dialMode ?? undefined : undefined },
         callerId ?? undefined,
       );
       setActiveCallCtx({
@@ -207,7 +214,7 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
         phone: lead.phone,
         callLogId: res.call_log_id ?? null,
       });
-      setActiveCallProvider(res.provider ?? callingProvider);
+      setActiveCallProvider(res.provider ?? provider);
       generatePreCallBrief(leadId);
       if (res.provider === "sim_basic") {
         const startedAt = new Date();
@@ -228,20 +235,20 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
   }
 
   async function executeManualDial(phone: string) {
-    if (callingProvider === "sim_basic" && !isMobileDialSurface()) {
+    if (padProvider === "sim_basic" && !isMobileDialSurface()) {
       toast.info("Open Anril on your mobile to place SIM calls.");
       return;
     }
     setManualDialing(true);
     try {
-      const res = await api.calls.initiate({ phone }, callerId ?? undefined);
+      const res = await api.calls.initiate({ phone, mode: dialMode ?? undefined }, callerId ?? undefined);
       setActiveCallCtx({
         leadId: res.lead_id ?? null,
         name: res.lead_name ?? null,
         phone,
         callLogId: res.call_log_id ?? null,
       });
-      setActiveCallProvider(res.provider ?? callingProvider);
+      setActiveCallProvider(res.provider ?? padProvider);
       setManualPhone("");
       if (res.provider === "sim_basic") {
         const startedAt = new Date();
@@ -267,7 +274,7 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
     if (dialCountdown === 0) {
       if (dialTarget) {
         if (dialTarget.leadId && dialTarget.lead) {
-          executeDial(dialTarget.leadId, dialTarget.lead);
+          executeDial(dialTarget.leadId, dialTarget.lead, dialTarget.viaPad);
         } else if (dialTarget.phone) {
           executeManualDial(dialTarget.phone);
         }
@@ -444,7 +451,7 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
     }
   }
 
-  function startImmediateSimLeadDial(leadId: string, lead: Lead) {
+  function startImmediateSimLeadDial(leadId: string, lead: Lead, viaPad = false) {
     if (!openNativeDialer(lead.phone)) {
       toast.error("This lead has no callable phone number.");
       return;
@@ -468,7 +475,7 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
     window.setTimeout(() => primeSimWrapup(startedAt), 2500);
 
     void api.calls.initiate(
-      { leadId, callbackJobId: selectedCallbackJobId ?? undefined },
+      { leadId, callbackJobId: selectedCallbackJobId ?? undefined, mode: viaPad ? dialMode ?? undefined : undefined },
       callerId ?? undefined,
     ).then((res) => {
       const provider = res.provider ?? "sim_basic";
@@ -514,7 +521,7 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
     // Synchronously schedule wrap-up modal to pre-open after 2.5 seconds
     window.setTimeout(() => primeSimWrapup(startedAt), 2500);
 
-    void api.calls.initiate({ phone }, callerId ?? undefined).then((res) => {
+    void api.calls.initiate({ phone, mode: dialMode ?? undefined }, callerId ?? undefined).then((res) => {
       const provider = res.provider ?? "sim_basic";
       // Update activeCallCtx with actual callLogId from the server
       setActiveCallCtx({
@@ -553,27 +560,28 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
     }
   }
 
-  const dialWithGuard = useCallback((leadId: string, lead: Lead) => {
+  // viaPad: the call comes from the Manual Dial pad, so the Office number / My SIM choice applies.
+  const dialWithGuard = useCallback((leadId: string, lead: Lead, viaPad = false) => {
     if (dialCountdown !== null) return;
-    if (callingProvider === "sim_basic" && isMobileDialSurface()) {
-      startImmediateSimLeadDial(leadId, lead);
+    if ((viaPad ? padProvider : callingProvider) === "sim_basic" && isMobileDialSurface()) {
+      startImmediateSimLeadDial(leadId, lead, viaPad);
       return;
     }
-    setDialTarget({ leadId, lead });
+    setDialTarget({ leadId, lead, viaPad });
     setDialCountdown(3);
-  }, [callingProvider, dialCountdown]);
+  }, [callingProvider, padProvider, dialCountdown]);
 
   const manualDialWithGuard = useCallback(() => {
     if (dialCountdown !== null) return;
     const phone = manualPhone.trim();
     if (!phone) return;
-    if (callingProvider === "sim_basic" && isMobileDialSurface()) {
+    if (padProvider === "sim_basic" && isMobileDialSurface()) {
       startImmediateSimManualDial(phone);
       return;
     }
     setDialTarget({ phone });
     setDialCountdown(3);
-  }, [callingProvider, dialCountdown, manualPhone]);
+  }, [padProvider, dialCountdown, manualPhone]);
 
   const cancelDial = useCallback(() => {
     setDialCountdown(null);
@@ -797,6 +805,9 @@ export function useCallingCockpit({ callerId, blockingWrapups, refreshQueue }: U
     leadDetailProps,
     // modal state (CockpitModals)
     callingProvider,
+    dialMode,
+    setDialMode,
+    officeReady,
     activeCallProvider,
     dialCountdown,
     dialTarget,

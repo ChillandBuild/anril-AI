@@ -38,7 +38,7 @@ from app.services.assignment import (
 from app.services.assignment_rules import any_mode, get_channel_rules, resolve_row
 from app.services.segmentation import new_lead_score_and_segment
 from app.services.attendance import mark_activity_today
-from app.services.call_rules import effective_calling_mode, pre_dial_block
+from app.services.call_rules import effective_calling_mode, hides_numbers, pre_dial_block
 from app.services.dial_check import DO_NOT_CALL_MESSAGE, SAID_STOP_MESSAGE, find_lead_for_dial
 
 
@@ -101,11 +101,16 @@ def _call_queue_sort_key(lead: dict, last_call_map: dict[str, str], last_inbound
     )
 
 
+SIM_HIDDEN_MESSAGE = "Your business hides numbers, so your calls go through the office number."
+
+
 class InitiateCall(BaseModel):
     lead_id: UUID | None = None
     phone: str | None = None      # manual dial — provide either lead_id or phone
     caller_id: UUID | None = None
     callback_job_id: UUID | None = None
+    # Manual Dial's Office number / My SIM choice. None = the person's usual mode.
+    mode: Literal["office", "sim"] | None = None
 
 
 class SendToMobilePayload(BaseModel):
@@ -241,6 +246,11 @@ async def initiate_call(payload: InitiateCall, ctx: dict = Depends(get_tenant_an
     calling_provider = effective_calling_mode(
         get_supabase(), tenant_id, mode_caller_id, business_provider=business_provider,
     )
+    if payload.mode == "sim" and hides_numbers(get_supabase(), tenant_id, ctx):
+        # A SIM call hands the full number back, which this business hides from telecallers.
+        raise HTTPException(status_code=403, detail=SIM_HIDDEN_MESSAGE)
+    if payload.mode:
+        calling_provider = "telecmi" if payload.mode == "office" else "sim_basic"
 
     if not check_quota(get_supabase(), tenant_id, "call_minute"):
         raise HTTPException(
@@ -1239,11 +1249,14 @@ def _dial_check_sync(phone: str, caller_id: str | None, ctx: dict) -> dict:
         customer = {
             "id": lead["id"], "name": lead.get("name"), "segment": lead.get("segment"),
             "phone": mask(lead["phone"]) if mask else lead["phone"], "came_from": came_from,
+            "last_chat_at": lead.get("last_inbound_at"),
         }
     return {
         "customer": customer,
         "checks": checks,
         "calling_from": "sim" if mode == "sim_basic" else "office",
+        "office_ready": bool(get_setting("telecmi_secret", tenant_id=tenant_id)),
+        "sim_allowed": not hides_numbers(db, tenant_id, ctx),
         "can_call": blocked_reason is None,
         "blocked_reason": blocked_reason,
     }
@@ -1642,6 +1655,9 @@ async def get_assignment_mode(ctx: dict = Depends(get_tenant_and_role)):
         "mode": "pull" if any_mode(get_channel_rules(cfg), "pull") else "push",
         "enabled": cfg.get("enabled", False),
         "calling_provider": cfg.get("calling_provider", "telecmi"),
+        # Manual Dial greys out "Office number" until the business has an office line set up.
+        "office_ready": bool(get_setting("telecmi_secret", tenant_id=ctx["tenant_id"])),
+        "sim_allowed": not hides_numbers(get_supabase(), ctx["tenant_id"], ctx),
     }
 
 

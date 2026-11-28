@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { formatPhone } from "@/lib/utils";
 import { callResultKey, callResultLabel } from "@/lib/call-wrapup";
 import { SEGMENT_WORD } from "../lib/dialLookup";
-import { stateTone, worthChecking, type DialCheckRow, type DialCheckState } from "../lib/dialCheck";
+import { initialsOf, lastChatWords, stateTone, worthChecking, type DialCheckRow, type DialCheckState } from "../lib/dialCheck";
 
 const MARK: Record<DialCheckRow["state"], string> = { ok: "✓", blocked: "⛔", warn: "!", not_checked: "–" };
 const TONE_CLASS: Record<ReturnType<typeof stateTone>, string> = {
@@ -42,22 +42,51 @@ export default function DialChecks({
   return (
     <div className={`w-full space-y-3 ${className}`}>
       {showChecks && (
-        <section className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h3 className="w-full min-w-0 font-label text-[10px] font-extrabold uppercase tracking-widest text-[#94a3b8] md:w-auto md:flex-1 md:truncate">
-              Before you call · <span className="text-[#13284A]">{loading ? "Checking…" : customer ? customer.name || formatPhone(customer.phone) : "New number"}</span>
-            </h3>
-            {customer?.segment && SEGMENT_WORD[customer.segment] && (
-              <span className="shrink-0 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 py-0.5 font-label text-[9px] font-bold text-[#475569]">
-                {SEGMENT_WORD[customer.segment]}
+        <section aria-label="Found in Customers" className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+          <div className="flex items-baseline gap-2">
+            <h3 className="font-label text-[10px] font-extrabold uppercase tracking-widest text-[#94a3b8]">Found in Customers</h3>
+            {customer && <span className="font-label text-[10px] text-[#94a3b8]">1 match</span>}
+          </div>
+          {loading ? (
+            <p className="mt-3 font-body text-xs text-[#475569]">Checking…</p>
+          ) : customer ? (
+            <div className="mt-3 flex items-center gap-3">
+              <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-label text-xs font-extrabold text-primary">
+                {initialsOf(customer.name)}
               </span>
-            )}
-            {customer && (
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <p className="min-w-0 truncate font-body text-sm font-bold text-[#13284A]">{customer.name || customer.phone || "No name"}</p>
+                  {customer.segment && SEGMENT_WORD[customer.segment] && (
+                    <span className="shrink-0 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 py-0.5 font-label text-[9px] font-bold text-[#475569]">
+                      {SEGMENT_WORD[customer.segment]}
+                    </span>
+                  )}
+                </div>
+                <p className="break-words font-label text-[11px] text-[#94a3b8]">
+                  {[
+                    customer.name && customer.phone ? customer.phone : null,
+                    customer.came_from ? `came from ${customer.came_from}` : null,
+                    lastChatWords(customer.last_chat_at) ? `last chat ${lastChatWords(customer.last_chat_at)}` : null,
+                  ].filter(Boolean).join(" · ")}
+                </p>
+              </div>
               <Link href={`/dashboard/leads/${customer.id}`} className="shrink-0 font-label text-[10px] font-bold text-primary hover:underline">
                 Open customer ›
               </Link>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="mt-3">
+              <p className="font-body text-sm font-bold text-[#13284A]">New number</p>
+              <p className="font-label text-[11px] text-[#94a3b8]">Not in Customers yet. It&apos;s added when you call.</p>
+            </div>
+          )}
+        </section>
+      )}
+
+      {showChecks && (
+        <section className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
+          <h3 className="font-label text-[10px] font-extrabold uppercase tracking-widest text-[#94a3b8]">Before you call</h3>
 
           {loading ? (
             <div className="flex justify-center py-4"><Loader2 size={16} className="animate-spin text-primary" /></div>

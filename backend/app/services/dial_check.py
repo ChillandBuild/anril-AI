@@ -7,7 +7,7 @@ import re
 
 from app.services.call_rules import clock_words, hours_message, now_ist, within_calling_hours
 
-_LEAD_FIELDS = "id,name,phone,segment,do_not_call,opted_out,source,created_at,ad_campaign_id,qr_link_id"
+_LEAD_FIELDS = "id,name,phone,segment,do_not_call,opted_out,source,created_at,ad_campaign_id,qr_link_id,last_inbound_at"
 
 _PLAIN_PHONE = re.compile(r"^[\d\s+\-]+$")
 

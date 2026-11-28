@@ -314,6 +314,55 @@ class InitiateCallTests(unittest.TestCase):
         self.assertEqual(res.json()["status"], "sim_started")
         mock_click.assert_not_called()
 
+    # ── the Office number / My SIM choice on Manual Dial ───────────────
+
+    def test_mode_sim_in_a_cloud_business_records_a_sim_call(self):
+        db = FakeDB({"leads": {"phone": "+919342012824", "name": "Asha", "do_not_call": False}})
+        res, mock_click = self._post(db, {"lead_id": LEAD_ID, "mode": "sim"})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["provider"], "sim_basic")
+        self.assertEqual(db.inserts_to("call_logs")[0]["provider"], "sim_basic")
+        mock_click.assert_not_called()
+
+    def test_mode_office_in_a_sim_business_goes_through_telecmi(self):
+        with patch("app.routes.calls.get_telecalling_config", return_value={"calling_provider": "sim_basic"}):
+            db = FakeDB({"leads": {"phone": "+919342012824", "name": "Asha", "do_not_call": False}, "callers": {"phone": "+919000000001", "telecmi_agent_id": "agent-1", "telecmi_agent_password": "x"}})
+            res, mock_click = self._post(db, {"lead_id": LEAD_ID, "caller_id": CALLER_ID, "mode": "office"}, click_result={"request_id": "req-1"})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["provider"], "telecmi")
+        mock_click.assert_called_once()
+
+    def test_mode_office_without_app_secret_is_the_same_400(self):
+        self.settings_map["telecmi_secret"] = None
+        with patch("app.routes.calls.get_telecalling_config", return_value={"calling_provider": "sim_basic"}):
+            res, mock_click = self._post(FakeDB({"leads": {"phone": "+919342012824", "name": "Asha", "do_not_call": False}}), {"lead_id": LEAD_ID, "mode": "office"})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("App Secret", res.json()["detail"])
+        mock_click.assert_not_called()
+
+    def test_mode_sim_still_refuses_do_not_call(self):
+        db = FakeDB({"leads": {"phone": "+919342012824", "name": "Asha", "do_not_call": True}})
+        res, _ = self._post(db, {"lead_id": LEAD_ID, "mode": "sim"})
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(db.inserts_to("call_logs"), [])
+
+    def test_hidden_number_caller_cannot_pick_sim(self):
+        app.dependency_overrides[get_tenant_and_role] = lambda: {
+            "tenant_id": TENANT_ID, "role": "caller", "caller_id": CALLER_ID, "permissions": ["telecalling.dialer"],
+        }
+        db = FakeDB({"leads": {"phone": "+919342012824", "name": "Asha", "do_not_call": False}})
+        with patch("app.routes.calls.hides_numbers", return_value=True):
+            res, mock_click = self._post(db, {"lead_id": LEAD_ID, "mode": "sim"})
+        self.assertEqual(res.status_code, 403)
+        self.assertEqual(res.json()["detail"], "Your business hides numbers, so your calls go through the office number.")
+        self.assertEqual(db.inserts_to("call_logs"), [])
+        self.assertNotIn("9342012824", res.text)
+        mock_click.assert_not_called()
+
+    def test_unknown_mode_is_rejected(self):
+        res, _ = self._post(FakeDB(), {"lead_id": LEAD_ID, "mode": "carrier-pigeon"})
+        self.assertEqual(res.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()

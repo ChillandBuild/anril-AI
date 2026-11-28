@@ -204,6 +204,52 @@ class RouteTests(_RouteBase):
         self.assertEqual(body["calling_from"], "office")
         self.assertIn("Said stop", body["blocked_reason"])
 
+    def test_dial_check_customer_has_last_chat_time(self):
+        db = _DB({"leads": [{"id": "l1", "phone": STORED, "name": "A", "segment": "B", "last_inbound_at": "2026-11-27T10:00:00+00:00"}]})
+        body = self._run(db, lambda: self.client.get("/api/v1/calls/dial-check", params={"phone": "9843120123"})).json()
+        self.assertEqual(body["customer"]["last_chat_at"], "2026-11-27T10:00:00+00:00")
+
+    def test_dial_check_last_chat_is_null_when_never_chatted(self):
+        db = _DB({"leads": [{"id": "l1", "phone": STORED, "name": "A"}]})
+        body = self._run(db, lambda: self.client.get("/api/v1/calls/dial-check", params={"phone": "9843120123"})).json()
+        self.assertIsNone(body["customer"]["last_chat_at"])
+
+    def test_lead_fields_include_last_inbound_at(self):
+        from app.services.dial_check import _LEAD_FIELDS
+        self.assertIn("last_inbound_at", _LEAD_FIELDS.split(","))
+
+    def test_dial_check_says_whether_office_number_is_set_up(self):
+        db = _DB({"leads": []})
+        body = self._run(db, lambda: self.client.get("/api/v1/calls/dial-check", params={"phone": "9000000000"})).json()
+        self.assertTrue(body["office_ready"])
+
+    def test_dial_check_office_not_ready_without_secret(self):
+        db = _DB({"leads": []})
+        body = self._run(
+            db, lambda: self.client.get("/api/v1/calls/dial-check", params={"phone": "9000000000"}),
+            extra=[patch("app.routes.calls.get_setting", return_value=None)],
+        ).json()
+        self.assertFalse(body["office_ready"])
+
+    def test_dial_check_sim_allowed_unless_numbers_hidden(self):
+        db = _DB({"leads": []})
+        get = lambda: self.client.get("/api/v1/calls/dial-check", params={"phone": "9000000000"}).json()
+        self.assertTrue(self._run(db, get)["sim_allowed"])
+        self.assertFalse(self._run(db, get, extra=[patch("app.routes.calls.hides_numbers", return_value=True)])["sim_allowed"])
+
+    def test_assignment_mode_says_sim_allowed(self):
+        for hidden in (False, True):
+            with patch("app.routes.calls.get_telecalling_config", return_value={}),                  patch("app.routes.calls.get_setting", return_value=None),                  patch("app.routes.calls.hides_numbers", return_value=hidden),                  patch("app.routes.calls.get_supabase", return_value=_DB()):
+                res = self.client.get("/api/v1/calls/assignment-mode")
+            self.assertIs(res.json()["sim_allowed"], not hidden)
+
+    def test_assignment_mode_says_whether_office_number_is_set_up(self):
+        for secret, want in ((APP_SECRET, True), (None, False)):
+            with patch("app.routes.calls.get_telecalling_config", return_value={"calling_provider": "sim_basic"}),                  patch("app.routes.calls.get_setting", side_effect=lambda key, **kw: secret if key == "telecmi_secret" else None):
+                res = self.client.get("/api/v1/calls/assignment-mode")
+            self.assertEqual(res.status_code, 200)
+            self.assertIs(res.json()["office_ready"], want)
+
     def test_dial_check_unknown_number_has_no_customer(self):
         res = self._run(_DB({"leads": []}), lambda: self.client.get("/api/v1/calls/dial-check", params={"phone": "9000000000"}))
         body = res.json()
