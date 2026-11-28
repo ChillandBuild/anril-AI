@@ -85,3 +85,27 @@ def test_oversized_sections_measures_each_section_separately():
     part = "- **Decision**: " + "x" * 200 + "\n"
     text = "## 2026-07-01 — One\n" + part * 60 + "## 2026-07-02 — Two\n" + part * 60
     assert sbc.oversized_sections(text, limit=20_000) == []
+
+
+# --- notes file: sub-headings count -----------------------------------------------------------
+
+_BULLET = "- **Trap:** " + "x" * 300 + "\n"
+
+
+def test_notes_blocks_flag_a_section_with_no_sub_headings():
+    text = "## Chart guard\n" + _BULLET * 40  # ~12,500 chars in one block
+    issues = sbc.oversized_sections(text, limit=8_000, levels=("## ", "### "), label="context/subsystem-notes.md")
+    assert len(issues) == 1
+    assert "Chart guard" in issues[0] and "subsystem-notes.md" in issues[0]
+
+
+def test_notes_blocks_are_quiet_once_sub_headings_split_the_section():
+    text = "## Chart guard\n\n### How it works\n" + _BULLET * 20 + "\n### Reply speed\n" + _BULLET * 20
+    assert sbc.oversized_sections(text, limit=8_000, levels=("## ", "### "), label="context/subsystem-notes.md") == []
+
+
+def test_log_sections_still_ignore_sub_headings_by_default():
+    # In the log only '## ' starts a section, so a '### ' inside does not hide an oversized entry.
+    text = "## 2026-07-01 — Entry\n" + _BULLET * 40 + "### detail\n" + _BULLET * 40
+    issues = sbc.oversized_sections(text, limit=20_000)
+    assert len(issues) == 1 and "decisions/log.md" in issues[0]

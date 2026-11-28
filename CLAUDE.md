@@ -12,8 +12,12 @@
 - Lookup order for ANY task: (1) find the exact file:line with a targeted grep for the symbol, UI string or error text, narrowing in steps (which files mention it → where it is defined → who calls it), (2) the ONE relevant `.agents/context/subsystem-notes.md` section, (3) at most 2–3 targeted reads. Full-file reads are the last resort.
 - Pull ONLY the `.agents/` file the task scope points to (below) — never preload all of them.
 - Searching `.agents/` files: lines there are whole paragraphs, so never print raw hits (measured 2026-11-28: cutting hits saves 56–65%).
-  Step 1: `grep -n -i "<word>" <file> | cut -c1-200 | head -40`. Step 2: `sed -n '<start>,<end>p' <file>` for the ONE section that matters.
-  To list log sections, filter by month: `grep -n "^## 2026-11" .agents/decisions/log.md | cut -c1-80` (the full heading list is ~26k chars).
+  Step 1: `grep -n -i "<word>" <file> | cut -c1-200 | head -40`.
+  Step 2: get the smallest heading block around hit line N (prints its heading line and the next one; `##` and `###` both count):
+  `awk -v n=N '/^##/{ if (NR>n) {print NR": "$0; exit} h=NR": "$0 } NR==n{print h}' <file> | cut -c1-90`
+  Step 3: `sed -n '<start>,<end>p' <file>` for that ONE block. Never guess a line range.
+  Don't list every heading (notes ~7k chars, log ~26k). For the log, filter by month: `grep -n "^## 2026-11" .agents/decisions/log.md | cut -c1-80`.
+- Writing `.agents/` files: no heading block over 8,000 chars in subsystem-notes.md (add `### ` sub-headings) or 20,000 in the log; `make second-brain-close` checks both.
 - **Database/schema work:** use the migration index in [decisions/log.md](.agents/decisions/log.md) + live Supabase `list_tables`/`execute_sql`.
 - This runs automatically for every task; the user does NOT have to ask for it.
 

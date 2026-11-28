@@ -250,6 +250,9 @@ def check_stale_claims():
 # 2026-11-28: after the heading repair the largest real section was 15,933 chars; before
 # it, one heading had swallowed three months of entries and reached 193,869.
 LOG_SECTION_MAX_CHARS = 20_000
+# Notes blocks are read whole, so they must be smaller. Measured 2026-11-28: past sessions read
+# 7,169 chars per lookup by guessing line ranges; blocks of about 3,000 cut that by roughly 60%.
+NOTES_BLOCK_MAX_CHARS = 8_000
 
 _INDEX_HEADING = "## DB Migrations Index"
 _INDEX_ROW = re.compile(r"^\| \*\*(\d{3})\*\* \|")
@@ -284,35 +287,51 @@ def migration_index_gap(log_text, migration_numbers):
     return []
 
 
-def oversized_sections(text, limit=LOG_SECTION_MAX_CHARS):
-    """One issue per '## ' section of `text` that is longer than `limit` characters.
-    A section runs from its '## ' heading line up to (not including) the next '## ' line."""
-    sections = []  # [heading text, char count]; text before the first heading is not a section
+def oversized_sections(text, limit=LOG_SECTION_MAX_CHARS, levels=("## ",), label="decisions/log.md"):
+    """One issue per heading block of `text` that is longer than `limit` characters.
+    A block runs from a heading line up to (not including) the next heading line. `levels`
+    says which prefixes start a block: only '## ' in the log (one dated entry each), '## ' and
+    '### ' in the notes file, where sub-headings are what keeps a topic cheap to read."""
+    blocks = []  # [heading text, char count]; text before the first heading is not a block
     for line in text.split("\n"):
-        if line.startswith("## "):
-            sections.append([line[3:].strip(), 0])
-        if sections:
-            sections[-1][1] += len(line) + 1
+        if line.startswith(levels):
+            blocks.append([line.lstrip("# ").strip(), 0])
+        if blocks:
+            blocks[-1][1] += len(line) + 1
+    advice = (
+        "group its bullets under '### ' sub-headings"
+        if "### " in levels
+        else "split it under more '## ' headings (one per dated entry, or one per month for a list)"
+    )
     return [
-        f"decisions/log.md: section '{heading[:70]}' is {size:,} chars (limit {limit:,}) — "
-        "split it under more '## ' headings (one per dated entry, or one per month for a list)"
-        for heading, size in sections
+        f"{label}: section '{heading[:70]}' is {size:,} chars (limit {limit:,}) — {advice}"
+        for heading, size in blocks
         if size > limit
     ]
 
 
 def check_log_health():
-    """decisions/log.md stays cheap to search: no giant sections, migration index current."""
+    """decisions/log.md and subsystem-notes.md stay cheap to search: no oversized heading
+    blocks, and the migration index is current."""
+    issues = []
+    notes = ROOT / ".agents" / "context" / "subsystem-notes.md"
+    if notes.is_file():
+        issues += oversized_sections(
+            notes.read_text(errors="ignore"),
+            limit=NOTES_BLOCK_MAX_CHARS,
+            levels=("## ", "### "),
+            label="context/subsystem-notes.md",
+        )
     log = ROOT / ".agents" / "decisions" / "log.md"
-    if not log.is_file():
-        return []
-    text = log.read_text(errors="ignore")
-    numbers = [
-        int(m.group(1))
-        for m in re.finditer(r"^backend/supabase/migrations/(\d{3})_[^/]+\.sql$",
-                             run(["git", "ls-files", "backend/supabase/migrations"]), re.M)
-    ]
-    return oversized_sections(text) + migration_index_gap(text, numbers)
+    if log.is_file():
+        text = log.read_text(errors="ignore")
+        numbers = [
+            int(m.group(1))
+            for m in re.finditer(r"^backend/supabase/migrations/(\d{3})_[^/]+\.sql$",
+                                 run(["git", "ls-files", "backend/supabase/migrations"]), re.M)
+        ]
+        issues += oversized_sections(text) + migration_index_gap(text, numbers)
+    return issues
 
 
 def main():
@@ -326,7 +345,7 @@ def main():
         "Git hook liveness": check_hook_liveness(),
         "Credential patterns (recent changes)": check_credential_patterns(),
         "Stale claims in .agents/": check_stale_claims(),
-        "Decision log health": check_log_health(),
+        "Log and notes size health": check_log_health(),
     }
 
     total = sum(len(v) for v in sections.values())

@@ -2497,3 +2497,10 @@ Moved by the second-brain audit so the active backlog lists only open work. Text
   the migration index was extended to 350; `second_brain_close.py` gained a "Decision log health" check
   (section over 20,000 chars, or a committed migration missing from the index).
 - **Rule for this file from now on:** every entry starts with its own `## YYYY-MM-DD — title` line. Keep lines short.
+- **Same day, notes file:** 8 heading blocks in `subsystem-notes.md` were over 8,000 chars (Chart guard 12,950, AstroTamil bridge 18,848…).
+  Their bullets are now grouped under 41 new `### ` sub-headings; bullets moved whole, no text changed
+  (the AstroTamil wire-contract children lost two spaces of indent). Largest block 18,848 → 7,233.
+  Replaying 81 past searches: 58% less to read when a hit lands in one of those sections.
+- **Lookup rule now finds the smallest heading block** around a hit with one `awk` line (CLAUDE.md and AGENTS.md), because the
+  old heading list only matched `## ` and hid sub-headings; past sessions guessed line ranges (7,169 chars per read, 40 of 52 crossed a section).
+- **Guard:** `second_brain_close.py` warns when a `##`/`###` block in `subsystem-notes.md` passes 8,000 chars.
