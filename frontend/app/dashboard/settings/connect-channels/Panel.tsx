@@ -279,7 +279,7 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
       {pickedUse && !metaConnected && (
         <p className="rounded-2xl border border-primary/20 bg-primary/5 p-3.5 font-body text-sm text-ink">
           {pickedUse === "keep_phone" ? (
-            <>You picked <strong>In Anril + keep my phone app</strong>. Open the <strong>⋯</strong> menu on WhatsApp and tap <strong>WhatsApp Coexistence</strong>.</>
+            <>You picked <strong>In Anril + keep my phone app</strong>. Tap <strong>WhatsApp Coexistence</strong> below.</>
           ) : (
             <>You picked <strong>Only in Anril</strong>. Tap <strong>Connect</strong> on WhatsApp below.</>
           )}
@@ -304,6 +304,7 @@ export default function ConnectChannelsPanel({ canManage = true }: { canManage?:
           canManage={canManage}
           metaConnected={metaConnected}
           metaBusy={meta.isBusy}
+          metaMode={meta.activeMode}
           busyTarget={busyTarget}
           marketplace={marketplace}
           marketplaceError={marketplaceError}

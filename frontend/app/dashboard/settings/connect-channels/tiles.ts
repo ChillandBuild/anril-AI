@@ -17,15 +17,15 @@ export const TILE_GROUPS: Array<{ id: TileGroup; label: string; hint: string; id
   { id: "payments", label: "Payments", hint: "How customers pay you", ids: ["razorpay"] },
 ];
 
-export const TILE_META: Record<TileId, { name: string; initials: string; badge: string }> = {
-  whatsapp: { name: "WhatsApp", initials: "WA", badge: "bg-green-100 text-green-800" },
-  instagram: { name: "Instagram DM", initials: "IG", badge: "bg-pink-100 text-pink-800" },
-  facebook: { name: "Facebook Messenger", initials: "FB", badge: "bg-blue-100 text-blue-800" },
-  telegram: { name: "Telegram", initials: "TG", badge: "bg-sky-100 text-sky-800" },
-  meta_ads: { name: "Meta Ads", initials: "AD", badge: "bg-indigo-100 text-indigo-800" },
-  indiamart: { name: "IndiaMART", initials: "IM", badge: "bg-orange-100 text-orange-800" },
-  justdial: { name: "JustDial", initials: "JD", badge: "bg-amber-100 text-amber-800" },
-  razorpay: { name: "Razorpay", initials: "RP", badge: "bg-blue-100 text-blue-700" },
+export const TILE_NAME: Record<TileId, string> = {
+  whatsapp: "WhatsApp",
+  instagram: "Instagram DM",
+  facebook: "Facebook Messenger",
+  telegram: "Telegram",
+  meta_ads: "Meta Ads",
+  indiamart: "IndiaMART",
+  justdial: "JustDial",
+  razorpay: "Razorpay",
 };
 
 export const IDLE_DETAIL: Record<TileId, string> = {
@@ -80,81 +80,30 @@ export function marketplaceStatus(st: MarketplaceStatus | null | undefined): Til
   return { state: "waiting", label: "Awaiting first", detail: "Connected · no enquiries yet" };
 }
 
-/** The account a tile is bound to: number, handle, page, ad account, or an em dash. */
-export function accountLine(id: TileId, settings: Setting[]): string {
+/** The account a row is bound to: an id (number, handle, page, ad account) and a label beside it. */
+export function assetFor(id: TileId, settings: Setting[]): { id: string | null; label: string | null } {
   const v = (key: string) => settingValue(settings, key);
-  const join = (...parts: Array<string | null>) => parts.filter(Boolean).join(" · ");
   switch (id) {
     case "whatsapp":
-      return join(v("meta_phone_display") ?? v("meta_phone_number_id"), v("meta_verified_name")) || "—";
+      return { id: v("meta_phone_display") ?? v("meta_phone_number_id"), label: v("meta_verified_name") };
     case "instagram": {
       const handle = v("instagram_username");
       const who = handle ? `@${handle}` : v("instagram_page_id");
-      return who ? `${who} · via linked Page` : "—";
+      return { id: who, label: who ? "via linked Page" : null };
     }
-    case "facebook": {
-      const page = v("facebook_page_name") ?? v("facebook_page_id");
-      return page ? `Page: ${page}` : "—";
-    }
+    case "facebook":
+      return { id: v("facebook_page_name") ?? v("facebook_page_id"), label: null };
     case "meta_ads":
-      return join(v("meta_ads_account_name"), v("meta_ads_account_id")) || "—";
+      return { id: v("meta_ads_account_id"), label: v("meta_ads_account_name") };
     case "razorpay":
-      return razorpayOAuthAccount(settings) ?? v("razorpay_key_id") ?? "—";
-    case "telegram": {
-      const ch = CHANNELS.find(c => c.id === "telegram");
-      return ch && isChannelConfigured(ch, settings) ? "Bot connected" : "No bot linked";
-    }
+      return { id: razorpayOAuthAccount(settings) ?? v("razorpay_key_id"), label: null };
     default:
-      return "—";
+      return { id: null, label: null };
   }
 }
 
-/** " · via Meta Business · 48d ago" for a Meta-connected tile, "" otherwise. */
-export function viaSuffix(id: TileId, state: ChannelState, settings: Setting[]): string {
+/** " · via your own API keys" for a Meta channel connected by hand; the hub header covers Meta Business. */
+export function connectionNote(id: TileId, state: ChannelState, settings: Setting[]): string {
   if (state === "off" || !["whatsapp", "instagram", "facebook", "meta_ads"].includes(id)) return "";
-  if (resolveConnectionSource(id, settings) !== "embedded") return " · via your own API keys";
-  const at = settingValue(settings, "meta_connected_at");
-  return at ? ` · via Meta Business · ${timeAgo(at)}` : " · via Meta Business";
-}
-
-export type StateCounts = { connected: number; total: number; receiving: number; quiet: number; attention: number; off: number };
-
-/** Green states (receiving, synced) count as receiving; waiting as quiet. */
-export function countStates(states: ChannelState[]): StateCounts {
-  const c: StateCounts = { connected: 0, total: states.length, receiving: 0, quiet: 0, attention: 0, off: 0 };
-  for (const s of states) {
-    if (s === "off") c.off++;
-    else {
-      c.connected++;
-      if (s === "waiting") c.quiet++;
-      else if (s === "attention") c.attention++;
-      else c.receiving++;
-    }
-  }
-  return c;
-}
-
-function joinNames(names: string[], last = "and"): string {
-  if (names.length <= 1) return names.join("");
-  return `${names.slice(0, -1).join(", ")} ${last} ${names[names.length - 1]}`;
-}
-
-/** One plain sentence for the summary card. */
-export function summarySentence(states: Partial<Record<TileId, ChannelState>>): string {
-  const on = (id: TileId) => states[id] !== undefined && states[id] !== "off";
-  const chatNames = (["whatsapp", "instagram", "facebook"] as TileId[])
-    .filter(on)
-    .map(id => (id === "facebook" ? "Messenger" : TILE_META[id].name.replace(" DM", "")));
-  if (on("telegram")) chatNames.push("Telegram");
-  const parts: string[] = [];
-  parts.push(
-    chatNames.length
-      ? `Customers can reach you on ${joinNames(chatNames)}.`
-      : "Connect WhatsApp, Instagram or Messenger so customers can reach you.",
-  );
-  const needFix = (Object.keys(states) as TileId[]).filter(id => states[id] === "attention").map(id => TILE_META[id].name);
-  if (needFix.length) parts.push(`${joinNames(needFix)} ${needFix.length > 1 ? "need" : "needs"} attention. Reconnect to keep messages flowing.`);
-  const missing = (["indiamart", "justdial"] as TileId[]).filter(id => id in states && !on(id)).map(id => TILE_META[id].name);
-  if (missing.length) parts.push(`Connect ${joinNames(missing, "or")} to bring their enquiries in too.`);
-  return parts.join(" ");
+  return resolveConnectionSource(id, settings) === "manual" ? " · via your own API keys" : "";
 }

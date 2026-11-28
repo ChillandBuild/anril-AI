@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { accountLine, channelStatus, countStates, marketplaceStatus, summarySentence } from "./tiles";
+import { assetFor, channelStatus, connectionNote, marketplaceStatus } from "./tiles";
 import type { Setting, WebhookHealth } from "./channels";
 
 function setting(key: string, display_value: string, is_set = true): Setting {
@@ -7,13 +7,6 @@ function setting(key: string, display_value: string, is_set = true): Setting {
 }
 
 const facebookConfigured = [setting("facebook_page_id", "123"), setting("facebook_access_token", "••••", true)];
-
-describe("countStates", () => {
-  test("splits connected states into receiving, quiet, attention and off", () => {
-    const c = countStates(["receiving", "synced", "waiting", "attention", "off", "off"]);
-    expect(c).toEqual({ connected: 4, total: 6, receiving: 2, quiet: 1, attention: 1, off: 2 });
-  });
-});
 
 describe("channelStatus", () => {
   test("not configured is off", () => {
@@ -38,22 +31,29 @@ describe("marketplaceStatus", () => {
   });
 });
 
-describe("accountLine", () => {
-  test("shows an em dash when nothing is stored", () => {
-    expect(accountLine("meta_ads", [])).toBe("—");
-    expect(accountLine("indiamart", [])).toBe("—");
+describe("assetFor", () => {
+  test("is empty when nothing is stored", () => {
+    expect(assetFor("meta_ads", [])).toEqual({ id: null, label: null });
+    expect(assetFor("indiamart", [])).toEqual({ id: null, label: null });
   });
-  test("builds the Instagram handle line", () => {
-    expect(accountLine("instagram", [setting("instagram_username", "astro")])).toBe("@astro · via linked Page");
+  test("pairs the WhatsApp number with the verified name", () => {
+    const s = [setting("meta_phone_display", "+91 95009 98088"), setting("meta_verified_name", "Kelir")];
+    expect(assetFor("whatsapp", s)).toEqual({ id: "+91 95009 98088", label: "Kelir" });
+  });
+  test("shows the Instagram handle via the linked Page", () => {
+    expect(assetFor("instagram", [setting("instagram_username", "astro")])).toEqual({ id: "@astro", label: "via linked Page" });
   });
 });
 
-describe("summarySentence", () => {
-  test("names connected chat channels and the missing lead sources", () => {
-    const s = summarySentence({ whatsapp: "receiving", instagram: "receiving", facebook: "waiting", indiamart: "off", justdial: "off" });
-    expect(s).toBe("Customers can reach you on WhatsApp, Instagram and Messenger. Connect IndiaMART or JustDial to bring their enquiries in too.");
+describe("connectionNote", () => {
+  const manual = [...facebookConfigured, setting("facebook_connection_source", "manual")];
+  test("names own API keys for a Meta channel connected by hand", () => {
+    expect(connectionNote("facebook", "waiting", manual)).toBe(" · via your own API keys");
   });
-  test("asks for a first channel when none is connected", () => {
-    expect(summarySentence({ whatsapp: "off" })).toContain("Connect WhatsApp, Instagram or Messenger");
+  test("says nothing when connected through Meta Business or not connected", () => {
+    const embedded = [...facebookConfigured, setting("facebook_connection_source", "embedded")];
+    expect(connectionNote("facebook", "waiting", embedded)).toBe("");
+    expect(connectionNote("facebook", "off", manual)).toBe("");
+    expect(connectionNote("telegram", "waiting", [])).toBe("");
   });
 });
