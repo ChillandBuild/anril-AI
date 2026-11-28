@@ -1,10 +1,10 @@
 """Write with AI inside Create Template: three different drafts of a WhatsApp template, from the
 owner's own words, the style and goal they pick, and what Anril already knows about the business.
 
-Modelled on AiSensy's template writer (docs/research/aisensy-ai-teardown.html), fixing what the
-teardown found weak there: their three drafts read alike (ours each take a different approach),
-nothing checks Meta's rules (ours checks each draft), and the AI knows nothing about the shop
-(ours reads the business description from Anril Setup).
+Modelled on AiSensy's template writer, fixing what our teardown of it found weak there: their
+three drafts read alike (ours each take a different approach), nothing checks Meta's rules (ours
+checks each draft), and the AI knows nothing about the shop (ours reads the business description
+from Anril Setup).
 
 It runs on the business's own Gemini key, `gemini_api_key` (the same one its AI replies use), set
 per client by Anril in the operator console (Client -> Config -> AI Integrations).

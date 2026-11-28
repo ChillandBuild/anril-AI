@@ -17,7 +17,7 @@ host=github.com
 ## Active Backlog
 
 ### v9.2 — held for later by Prem (2026-11-24; build list items 1–31 go first)
-Screen numbers are in the pending page `docs/research/v92-pending-list.html`.
+Screen numbers come from the pending page, deleted from the repo on 2026-11-25 (e3673906). To read it again: `git show 39755f99:docs/research/v92-pending-list.html`.
 1. Questions & scoring editable: questions table, add, suggest, result %, sample chat, rules per level
 2. Knowledge: one table "Comes from", missing items, whole website + weekly re-read
 3. Teach: "Suggest common ones"; Undo + AI ON in header on 168/170/171
@@ -604,7 +604,7 @@ Prem is exploring reselling SMS to Anril tenants under the Anril brand via Fast2
 
 ## v9.2 dashboard redesign — menu, left for last (2026-11-21)
 Shipped: Phase 1 (`3bec953a`), Phase 2 (`c9551e3c`), Phase 3 titles + Settings home (`f74a0aa7`), Call IQ reorganised (`c5d93dff`). Dropped by Prem: merging Anril OTP + Anril SMS, and the phone bar Today · Chats · Orders · More — do not re-propose.
-- **Step 6 — tab bars on every module: TRIED AND DROPPED by Prem (2026-11-23). Do NOT propose again.** Built as a flat 13-row menu + one tab bar per module under the header (96991d79); after seeing it Prem said "revert this, that would be better", reverted in e4595f58. The fold-out menu stays. Mockup kept only as a record: `docs/research/v92-tabbars-menu-mockup.html`.
+- **Step 6 — tab bars on every module: TRIED AND DROPPED by Prem (2026-11-23). Do NOT propose again.** Built as a flat 13-row menu + one tab bar per module under the header (96991d79); after seeing it Prem said "revert this, that would be better", reverted in e4595f58. The fold-out menu stays. The mockup was deleted from the repo on 2026-11-25 (e3673906); it is still in git history: `git show 39755f99:docs/research/v92-tabbars-menu-mockup.html`.
 - None of the menu phases has been looked at logged in yet (tests/tsc/lint only). Check: Engage › Auto-Messages chips, Settings home cards, Call IQ › Calling › Dial a number (`/dashboard/telecalling/dial`).
 - `lib/brand-guard.test.ts` fails: WhatsApp green `#25D366` in `deals/new-bill/page.tsx` (Keerthi), `conversation-list.tsx`, `site/HeroInbox.tsx`.
 - Roles page still says "Audit Log" in its own heading (`app/dashboard/roles/page.tsx`); the tab is now "Activity log".

@@ -5,7 +5,7 @@ IndiaMART, JustDial). leads.detail_sources (migration 340) records who set each 
   {"budget": {"by": "ai", "at": "..."}}  or  {"budget": {"by": "staff", "name": "Karthik", "at": "..."}}
 A key with no entry came from a form.
 
-Rules (see docs/research/v92-last-items-preview.html):
+Rules:
 - The AI saves only what the customer said: one small model call (read_and_save) that runs alongside each
   AI reply, never in its way. Not a reply tool: this provider writes no text on a turn where it calls a
   tool, so a tool would cost a second full reply round on every message with a detail in it.
