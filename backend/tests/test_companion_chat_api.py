@@ -598,3 +598,27 @@ def test_playground_app_view_gets_the_reply_as_the_app_does(env):
     assert plain["bubbles"] is None and plain["tag"] is None
     assert env.client.post(url, json={"message": "Vanakkam", "reply_format": {"buttons": [
         {"id": "counted", "when": "x"}]}}).status_code == 422
+
+
+def test_the_past_questions_ride_through_a_tool_turn_and_are_never_taken_from_the_app(env, monkeypatch):
+    """28 Nov 2026: a chip must not repeat a question asked this week, also when the reply came after a tool."""
+    import asyncio
+    monkeypatch.setattr(engine, "_asked_since", lambda: "2025-12-31T00:00:00")   # the fake stamps rows 2026-01-01
+    person = asyncio.run(store.find_or_create_end_user("t1", "48213"))
+    env.db.add("companion_messages", tenant_id="t1", companion_id=env.live["id"], conversation_id="c0",
+               end_user_id=person["id"], role="user", content="Kalyanam eppo nadakkum",
+               created_at="2026-01-01T00:00:01")
+    # "nadakkum eppo kalyanam" has the same words: 1.0 alike under the fake embedding, so it is dropped
+    env.state["script"] = [("", [call()]), ("[mood: warm] [tag: counted]\nUngal lagnam Kumbham.\n"
+                                            "[chips: nadakkum eppo kalyanam | Dasa eppadi? | Rasi enna?]", [])]
+    first = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+        "companion_id": env.live["id"], "user_id": "48213", "message": "En jathagam",
+        "tools": [GET_CHART.model_dump()], "reply_format": FORMAT}).json()
+    done = env.client.post(f"{PUB}/chat/continue", headers=bearer(env.key), json={
+        "user_id": "48213", "turn_id": first["turn_id"], "results": [{"id": "call_1", "output": CHART}]}).json()
+    assert (done["bubbles"], done["chips"], done["tag"]) == (["Ungal lagnam Kumbham."],
+                                                             ["Dasa eppadi?", "Rasi enna?"], "counted")
+    for sneaked in ({**FORMAT, "asked": ["x"]}, {**FORMAT, "_asked": ["x"]}):
+        r = env.client.post(f"{PUB}/chat", headers=bearer(env.key), json={
+            "companion_id": env.live["id"], "user_id": "48213", "message": "hi", "reply_format": sneaked})
+        assert r.status_code == 422

@@ -2,7 +2,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.companion.reply_format import (CHIPS, GENERIC_TAGS, MAX_BUBBLES, ReplyFormat, Shaped, finalize,
+from app.companion.reply_format import (ASKED_CHARS, ASKED_MAX, CHIP_IDEAS, CHIPS, GENERIC_TAGS, MAX_BUBBLES, ReplyFormat, Shaped, finalize,
                                         format_block, read_format)
 
 FMT = ReplyFormat(buttons=[
@@ -70,12 +70,35 @@ def test_unknown_button_and_tag_are_none():
     assert read_format("[button: none] [tag: helpline] Call them", FMT)[2:] == (None, "helpline")
 
 
-def test_chips_need_exactly_two_different_short_ones():
-    assert read_format("x [chips: only one]", FMT).chips == []
-    assert read_format("x [chips: a | b | c]", FMT).chips == []
-    assert read_format("x [chips: same | Same ]", FMT).chips == []
-    assert read_format(f"x [chips: {'y' * 81} | b]", FMT).chips == []
+def test_chips_are_up_to_four_different_short_ideas():
+    # which two show is the engine's (chip_repeats.fresh): here they are only read
+    assert read_format("x [chips: only one]", FMT).chips == ["only one"]
+    assert read_format("x [chips: a | b | c | d | e]", FMT).chips == ["a", "b", "c", "d"]
+    assert read_format("x [chips: same | Same | other]", FMT).chips == ["same", "other"]
+    assert read_format(f"x [chips: {'y' * 81} | b | c]", FMT).chips == ["b", "c"]
     assert read_format("x [chips: Eppo? › | Velai? > |  ]", FMT).chips == ["Eppo?", "Velai?"]
+    assert read_format("x [chips: none]", FMT).chips == [] and CHIP_IDEAS == 4
+
+
+def test_the_prompt_asks_for_four_ideas_and_never_lists_the_questions_already_asked():
+    # listed, flash-lite copied them back as chips (28 Nov 2026): code checks them instead
+    assert "[chips: question | question | question | question]" in format_block(FMT)
+    assert format_block(FMT.with_asked(["kalyanam eppo", "Velai kidaikuma?"])) == format_block(FMT)
+
+
+def test_with_asked_keeps_each_question_once_at_its_newest_place_and_cuts_long_ones():
+    fmt = FMT.with_asked(["Velai?", "kalyanam  eppo", "velai?", "", "x" * 300])
+    assert fmt.asked == ["kalyanam eppo", "velai?", "x" * ASKED_CHARS]
+    assert FMT.asked == [] and fmt.questions_left == FMT.questions_left   # a copy
+    many = FMT.with_asked([f"q{i}" for i in range(40)]).asked
+    assert len(many) == ASKED_MAX and many[-1] == "q39"
+
+
+def test_the_asked_questions_are_set_by_code_never_by_the_request():
+    for sneaked in ({"asked": ["x"]}, {"_asked": ["x"]}):
+        with pytest.raises(ValidationError):
+            ReplyFormat(**sneaked)
+    assert "asked" not in ReplyFormat().with_asked(["x"]).model_dump()
 
 
 def test_tags_in_odd_places_and_casing_are_removed():
