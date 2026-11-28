@@ -53,7 +53,7 @@ interface Props {
   onLoadMore?: () => void;
   /** Open handovers, for the Needs you tab's badge. */
   escalationCount?: number;
-  /** A full-width page shown under the tabs (Needs you, Archived, Blocked). */
+  /** A full-width page shown under the tabs (Needs you, Archived & blocked). */
   fullPageContent?: React.ReactNode;
   /** Saves everyone the current tab, search and filters match as a group. Absent = no button (no leads.manage). */
   onSaveAsGroup?: (name: string) => Promise<void>;
@@ -62,7 +62,7 @@ interface Props {
 }
 
 /** Tabs that fold into the header menu on a phone, so the tab row stays one short line. */
-const PHONE_MENU_TABS: ReadonlySet<string> = new Set(["archived", "blocked"]);
+const PHONE_MENU_TABS: ReadonlySet<string> = new Set(["archived"]);
 
 const CHANNEL_CHIPS: { value: InboxChannel; label: string; dot?: string }[] = [
   { value: "all", label: "All" },
@@ -148,14 +148,13 @@ export function ConversationList(props: Props) {
     { id: "inbox", label: "Inbox" },
     { id: "ai_handling", label: "AI handling", count: counts.ai_handling },
     { id: "needs_you", label: "Needs you", count: escalationCount, urgent: true },
-    { id: "archived", label: "Archived" },
-    { id: "blocked", label: "Blocked" },
+    { id: "archived", label: "Archived & blocked" },
   ];
   const anyNarrowing = Boolean(searchQuery) || filterCount > 0 || channel !== "all";
 
   // The full-width Needs you page keeps its original header and left-aligned tabs; the narrow
   // chat list uses the 68px band (level with the chat header) and tabs locked to its width.
-  const fullScreen = (view === "needs_you" || view === "archived" || view === "blocked") && Boolean(fullPageContent);
+  const fullScreen = (view === "needs_you" || view === "archived") && Boolean(fullPageContent);
 
   const headerAndTabs = (
     <>
@@ -185,7 +184,7 @@ export function ConversationList(props: Props) {
                     <button onClick={() => { setSelectionMode(true); setSelectedIds(new Set(leads.map(l => l.id))); setMenuOpen(false); }} className="w-full text-left px-4 py-3 md:py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 transition-colors">
                       Select all
                     </button>
-                    {/* Phone: Archived and Blocked live here instead of taking a second row of tabs. */}
+                    {/* Phone: Archived & blocked lives here instead of taking a second row of tabs. */}
                     {tabs.filter((t) => PHONE_MENU_TABS.has(t.id)).map((t) => (
                       <button
                         key={t.id}
@@ -221,7 +220,7 @@ export function ConversationList(props: Props) {
               onClick={() => onViewChange(tab.id)}
               className={cn(
                 "relative h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-3 text-[12.5px] font-semibold transition-colors md:flex md:h-auto md:gap-1.5 md:rounded-none md:px-0 md:py-3 md:text-[12px]",
-                // On the Archived / Blocked pages the header menu is not shown, so both stay as tabs there.
+                // On the Archived & blocked page the header menu is not shown, so it stays a tab there.
                 PHONE_MENU_TABS.has(tab.id) && !isActive && !fullScreen ? "hidden" : "flex",
                 isActive
                   ? "bg-[#0A1528] text-white md:bg-transparent md:text-primary"
@@ -250,7 +249,7 @@ export function ConversationList(props: Props) {
     </>
   );
 
-  // Needs you / Archived / Blocked: a full-width page under the same header and tabs.
+  // Needs you / Archived & blocked: a full-width page under the same header and tabs.
   if (fullScreen) {
     return (
       <div className="w-full flex-shrink-0 bg-white flex flex-col h-full z-10 relative">

@@ -726,6 +726,21 @@ export interface ReviewLead {
   last_activity_at: string | null;
 }
 
+export interface DialCheckRow {
+  key: string;
+  label: string;
+  state: "ok" | "blocked" | "warn" | "not_checked";
+  detail: string | null;
+}
+
+export interface DialCheck {
+  customer: { id: string; name: string | null; segment: string | null; phone: string | null; came_from: string | null } | null;
+  checks: DialCheckRow[];
+  calling_from: "office" | "sim";
+  can_call: boolean;
+  blocked_reason: string | null;
+}
+
 export interface CallLog {
   id: string;
   lead_id: string | null;
@@ -3168,11 +3183,17 @@ export const api = {
         `/api/v1/calls/initiate`,
         { method: "POST", keepalive: true, body: JSON.stringify({ lead_id: target.leadId, phone: target.phone, caller_id: callerId, callback_job_id: target.callbackJobId }) }
       ),
-    recent: async (limit = 20, callerId?: string) => {
+    recent: async (limit = 20, callerId?: string, opts?: { today?: boolean }) => {
       const qs = new URLSearchParams({ limit: String(limit) });
       if (callerId) qs.set("caller_id", callerId);
+      if (opts?.today) qs.set("today", "true");
       const res = await apiFetch<{ data: CallLog[] }>(`/api/v1/calls/recent?${qs.toString()}`);
       return res.data || [];
+    },
+    dialCheck: (phone: string, callerId?: string) => {
+      const qs = new URLSearchParams({ phone });
+      if (callerId) qs.set("caller_id", callerId);
+      return apiFetch<DialCheck>(`/api/v1/calls/dial-check?${qs.toString()}`);
     },
     saveWrapup: (callLogId: string, payload: WrapupPayload) =>
       apiFetch<WrapupSaved>(`/api/v1/calls/${callLogId}/outcome`, {

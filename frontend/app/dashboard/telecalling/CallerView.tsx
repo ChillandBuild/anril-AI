@@ -9,6 +9,8 @@ import ManualDialPanel from "./components/ManualDialPanel";
 import RecentCallsTab from "./components/RecentCallsTab";
 import LeadDetailPanel from "./components/LeadDetailPanel";
 import CockpitModals from "./components/CockpitModals";
+import DialChecks from "./components/DialChecks";
+import { useDialCheck } from "./lib/dialCheck";
 import { useCallingCockpit } from "./lib/useCallingCockpit";
 import { getLeadQueueSection, sortLeadsForCallQueue, type LeadQueueSection } from "./lib/queue-priority";
 import { useSearchParams } from "next/navigation";
@@ -22,6 +24,7 @@ import { useIsPhone } from "@/hooks/useIsPhone";
 export default function CallerView({ callerId, readOnly = false }: { callerId: string | null; readOnly?: boolean }) {
   const searchParams = useSearchParams();
   // caller profile + my assigned queue
+  const [myName, setMyName] = useState<string | null>(null);
   const [myStatus, setMyStatus] = useState<"active" | "break" | "logged_out">("active");
   const [myLeads, setMyLeads] = useState<Lead[]>([]);
   // True until the first queue fetch settles, so we never show "0 leads" / the empty state early.
@@ -42,6 +45,7 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
       const callers = Array.isArray(rawCallers) ? rawCallers : (rawCallers?.data ?? []);
       const leads = Array.isArray(rawLeads) ? rawLeads : [];
       const me = callers.find((c: Caller) => c.id === callerId) || null;
+      if (me) setMyName(me.name || null);
       if (me) setMyStatus((me.status as "active" | "break" | "logged_out") || "active");
 
       const dialable = leads.filter((l: Lead) => l != null && l.phone && l.phone.trim() !== "");
@@ -61,6 +65,7 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
   useEffect(() => { loadQueue(); }, [loadQueue]);
 
   const cockpit = useCallingCockpit({ callerId, blockingWrapups: true, refreshQueue: loadQueue });
+  const dialCheck = useDialCheck(cockpit.manualPhone, callerId, cockpit.manualDialing);
   // Phone and desktop layouts each hold a lead panel that fetches: mount only the one on screen.
   const isPhone = useIsPhone();
 
@@ -143,6 +148,8 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
       {isPhone && <PhoneCallerView
         cockpit={cockpit}
         callerId={callerId}
+        dialCheck={dialCheck}
+        myName={myName}
         readOnly={readOnly}
         myStatus={myStatus}
         onStatusChange={setMyStatus}
@@ -230,7 +237,7 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
             {queueSubTab === "recent" ? (
               <RecentCallsTab callerId={callerId} onSelectLead={cockpit.setSelectedLeadId} />
             ) : queueSubTab === "dialer" ? (
-              <ManualDialPanel cockpit={cockpit} readOnly={readOnly} />
+              <ManualDialPanel cockpit={cockpit} readOnly={readOnly} dialCheck={dialCheck} yourName={myName} />
             ) : queueLoading ? (
               <AiraLoader inline className="min-h-[200px] flex-1" />
             ) : myLeads.length === 0 ? (
@@ -342,7 +349,11 @@ export default function CallerView({ callerId, readOnly = false }: { callerId: s
         {/* Right Side: Lead Profile (8/12) */}
         <div className="hidden min-h-[380px] flex-col overflow-hidden rounded-3xl border border-[#e2e8f0] bg-[#f8fafc] shadow-sm xl:col-span-8 xl:flex xl:min-h-0">
           <div className="flex-1 overflow-y-auto">
-            {!cockpit.selectedLeadId ? (
+            {!cockpit.selectedLeadId && queueSubTab === "dialer" ? (
+              <div className="p-5">
+                <DialChecks phone={cockpit.manualPhone} dial={dialCheck} yourName={myName} />
+              </div>
+            ) : !cockpit.selectedLeadId ? (
               <div className="min-h-full flex flex-col items-center justify-center p-12 text-center bg-gradient-to-br from-[#f8fafc]/40 to-primary-light/10">
                 <div className="relative mb-6">
                   <div className="absolute inset-0 bg-primary/5 blur-2xl rounded-full scale-150 animate-pulse" />

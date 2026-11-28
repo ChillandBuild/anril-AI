@@ -150,6 +150,49 @@ class RecentCallsTests(unittest.TestCase):
         self.assertEqual(row["score"], 7.5)
         self.assertEqual(row["evaluation"], {"overall_score": 7.6})
 
+    def _recording_chain(self, mock_get_db, rows=(ROW,)):
+        """A fake query where every filter returns the same object, so each call can be asserted."""
+        q = MagicMock()
+        q.eq.return_value = q
+        q.gte.return_value = q
+        q.order.return_value = q
+        q.limit.return_value = q
+        q.execute.return_value = MagicMock(data=list(rows))
+        db = MagicMock()
+        db.table.return_value.select.return_value = q
+        mock_get_db.return_value = db
+        return q
+
+    @patch("app.routes.calls.get_telecalling_config", return_value={"calling_provider": "telecmi"})
+    @patch("app.services.call_rules.ist_day_start_utc")
+    @patch("app.routes.calls.get_supabase")
+    def test_recent_today_filters_from_ist_midnight(self, mock_get_db, mock_day_start, _cfg):
+        from datetime import datetime, timezone
+        ist_midnight = datetime(2026, 11, 27, 18, 30, tzinfo=timezone.utc)  # 00:00 IST on 28 Nov
+        mock_day_start.return_value = ist_midnight
+        self._as("owner")
+        q = self._recording_chain(mock_get_db)
+
+        res = self.client.get("/api/v1/calls/recent?today=true")
+
+        self.assertEqual(res.status_code, 200)
+        q.gte.assert_called_once_with("created_at", ist_midnight.isoformat())
+
+    @patch("app.routes.calls.get_telecalling_config", return_value={"calling_provider": "telecmi"})
+    @patch("app.services.call_rules.ist_day_start_utc")
+    @patch("app.routes.calls.get_supabase")
+    def test_recent_today_keeps_caller_only_rule(self, mock_get_db, mock_day_start, _cfg):
+        from datetime import datetime, timezone
+        mock_day_start.return_value = datetime(2026, 11, 27, 18, 30, tzinfo=timezone.utc)
+        self._as("caller", caller_id="caller-1")
+        q = self._recording_chain(mock_get_db)
+
+        self.client.get("/api/v1/calls/recent?today=true&caller_id=someone-else")
+
+        q.eq.assert_any_call("caller_id", "caller-1")
+        self.assertNotIn(("caller_id", "someone-else"), [c.args for c in q.eq.call_args_list])
+        q.gte.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

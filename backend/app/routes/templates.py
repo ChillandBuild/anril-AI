@@ -294,14 +294,14 @@ async def ai_draft_template(
 def _bulk_existing(db, tenant_id: str, waba_id: str | None) -> list[dict]:
     """This account's templates, the same ones POST / counts as "already there"."""
     result = (
-        db.table("message_templates").select("name,language,body_text,footer_text,meta_template_id,meta_waba_id,status")
+        db.table("message_templates").select("id,name,language,category,header_media_type,body_text,footer_text,meta_template_id,meta_waba_id,status")
         .eq("tenant_id", tenant_id).execute()
     )
     return [r for r in (result.data or []) if _belongs_to_current_waba(r, waba_id)]
 
 
 def _bulk_counts(verdicts: list[dict]) -> dict:
-    return {k: sum(1 for v in verdicts if v["status"] == k) for k in ("ready", "need_fix", "exists")}
+    return {k: sum(1 for v in verdicts if v["status"] == k) for k in ("ready", "need_fix", "exists", "update")}
 
 
 _BULK_FILE_MAX_BYTES = 2 * 1024 * 1024
@@ -381,10 +381,13 @@ async def bulk_submit_templates(
     async def create(fields: dict) -> dict:
         return await create_template_record(CreateTemplate(**fields), tenant_id)
 
-    results = await template_bulk.submit_rows(rows, _bulk_existing(get_supabase(), tenant_id, waba_id), create)
+    async def update(template_id: str, fields: dict) -> dict:
+        return await update_template_record(template_id, UpdateTemplate(**fields), tenant_id)
+
+    results = await template_bulk.submit_rows(rows, _bulk_existing(get_supabase(), tenant_id, waba_id), create, update)
     return {
         "results": results,
-        "counts": {k: sum(1 for r in results if r["status"] == k) for k in ("sent", "refused", "skipped")},
+        "counts": {k: sum(1 for r in results if r["status"] == k) for k in ("sent", "updated", "refused", "skipped")},
     }
 
 
@@ -1007,6 +1010,10 @@ async def update_template(
     tenant_id: str = Depends(get_tenant_id),
     _ctx: dict = Depends(require_templates_manage),
 ):
+    return await update_template_record(template_id, payload, tenant_id)
+
+
+async def update_template_record(template_id: str, payload: UpdateTemplate, tenant_id: str) -> dict:
     """Edit an APPROVED, REJECTED or PAUSED template -- the statuses Meta allows.
     Meta caps approved-template edits (1 per 24 hours, 10 per 30 days) and
     re-reviews them; rejected/paused ones can be edited any number of times.

@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 IST = timezone(timedelta(hours=5, minutes=30))
 MAX_UPLOAD_BYTES = 1_048_576
@@ -445,7 +448,59 @@ def came_from_labels(db, tenant_id: str, leads: list[dict]) -> dict[str, str]:
             continue
         if lead.get("qr_link_id") and qrs.get(str(lead["qr_link_id"])):
             out[lid] = f"from QR · {qrs[str(lead['qr_link_id'])]}"
+    _add_dialled_labels(db, tenant_id, leads, out)
     return out
+
+
+_DIAL_WINDOW_SECONDS = 120
+
+
+def _parse_ts(value: Any) -> datetime | None:
+    try:
+        ts = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+def dialled_label(lead: dict, first_call: dict | None) -> str | None:
+    """"dialled by <caller>" for a lead the dial pad created: source manual, and its first call
+    was logged within 120 s of the lead (a lead added by hand and called later gets no label)."""
+    if lead.get("source") != "manual" or not first_call:
+        return None
+    name = ((first_call.get("callers") or {}).get("name") or "").strip()
+    lead_at, call_at = _parse_ts(lead.get("created_at")), _parse_ts(first_call.get("created_at"))
+    if not name or not lead_at or not call_at:
+        return None
+    if not 0 <= (call_at - lead_at).total_seconds() <= _DIAL_WINDOW_SECONDS:
+        return None
+    return f"dialled by {name}"
+
+
+def _add_dialled_labels(db, tenant_id: str, leads: list[dict], out: dict[str, str]) -> None:
+    """Fill `out` for unlabelled manual leads from their first call. Never raises."""
+    todo = [l for l in leads if l.get("source") == "manual" and str(l.get("id")) not in out]
+    if not todo:
+        return
+    first: dict[str, dict] = {}
+    # Only calls within the dial window of the newest lead can matter: skip the rest of the history.
+    created = [t for t in (_parse_ts(l.get("created_at")) for l in todo) if t]
+    upper = (max(created) + timedelta(seconds=_DIAL_WINDOW_SECONDS)).isoformat() if created else None
+    try:
+        for chunk in _chunks(sorted({str(l["id"]) for l in todo})):
+            q = (db.table("call_logs").select("lead_id,created_at,callers(name)")
+                 .eq("tenant_id", tenant_id).in_("lead_id", chunk))
+            if upper:
+                q = q.lte("created_at", upper)
+            for c in q.order("created_at").execute().data or []:
+                first.setdefault(str(c.get("lead_id")), c)  # ascending: first seen is earliest
+    except Exception as e:
+        logger.warning("dialled-by labels read failed for tenant %s: %s", tenant_id, e)
+        return
+    for lead in todo:
+        label = dialled_label(lead, first.get(str(lead["id"])))
+        if label:
+            out[str(lead["id"])] = label
 
 
 def _ad_label(campaign: dict | None) -> str | None:

@@ -82,12 +82,25 @@ export type BulkRow = {
    * example_1..5, footer, button_1..3), so the review screen can mark that field. */
   issues: BulkIssue[];
   problems: string[];
-  status: "ready" | "need_fix" | "exists";
+  status: "ready" | "need_fix" | "exists" | "update";
+  /** Set when the name and language are already on the account. */
+  existing_id?: string | null;
+  existing_status?: string | null;
+  existing_type?: string | null;
 };
 
-export type BulkCounts = { ready: number; need_fix: number; exists: number };
+export type BulkCounts = { ready: number; need_fix: number; exists: number; update?: number };
 
-export type BulkResult = { row: number; name: string; language: string | null; status: "sent" | "refused" | "skipped"; reason?: string };
+export type BulkAction = "skip" | "update";
+
+export type BulkResult = {
+  row: number;
+  name: string;
+  language: string | null;
+  status: "sent" | "updated" | "refused" | "skipped";
+  reason?: string;
+  note?: string;
+};
 
 export const EXAMPLE_SLOTS = 5;
 export const BUTTON_SLOTS = 3;
@@ -114,7 +127,7 @@ export function buttonSlots(row: BulkRow): BulkButton[] {
 }
 
 /** What the review screen sends back to /bulk/recheck and /bulk/submit for one row. */
-export function rowForCheck(row: BulkRow) {
+export function rowForCheck(row: BulkRow, action?: BulkAction) {
   const examples = [...row.examples, ...Array(EXAMPLE_SLOTS).fill("")].slice(0, EXAMPLE_SLOTS);
   return {
     row: row.row,
@@ -127,7 +140,26 @@ export function rowForCheck(row: BulkRow) {
     examples,
     footer: row.footer,
     buttons: buttonSlots(row).filter((b) => b.type || b.text || b.value),
+    ...(action === "update" ? { action } : {}),
   };
+}
+
+/** A row Anril has already sent to Meta (new or as an update): shown, no longer editable. */
+export function isDone(result: BulkResult | undefined): boolean {
+  return result?.status === "sent" || result?.status === "updated";
+}
+
+/** How many rows the Send button will send as new templates and as updates. */
+export function sendCounts(toSend: BulkRow[]): { created: number; updates: number } {
+  const updates = toSend.filter((r) => r.status === "update").length;
+  return { created: toSend.length - updates, updates };
+}
+
+/** "Send 3 to Meta", plus " · 1 update" when some rows change an existing template. */
+export function sendLabel(toSend: BulkRow[]): string {
+  const { updates } = sendCounts(toSend);
+  const base = `Send ${toSend.length} to Meta`;
+  return updates > 0 ? `${base} · ${updates} update${updates === 1 ? "" : "s"}` : base;
 }
 
 /** Props for the WhatsApp preview: header, body with the examples in place of {{n}}, footer, buttons. */

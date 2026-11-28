@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buttonSlots, issuesFor, previewOf, rowForCheck, variablesIn, type BulkRow } from "./template-excel";
+import { buttonSlots, isDone, issuesFor, previewOf, rowForCheck, sendCounts, sendLabel, variablesIn, type BulkRow } from "./template-excel";
 
 const row: BulkRow = {
   row: 4, name: "festival_offer", type: "MARKETING", language: "ta",
@@ -39,5 +39,26 @@ describe("Excel review helpers", () => {
     expect(p.headerSample).toBe("Priya");
     expect(p.bodySamples).toEqual({ 1: "Priya", 2: "20%" });
     expect(p.buttons).toEqual([{ type: "URL", text: "Shop now", url: "https://example.com", phone: undefined }]);
+  });
+});
+
+describe("update on an existing template", () => {
+  const ready = { ...row, status: "ready" as const };
+  const upd = { ...row, row: 5, status: "update" as const };
+  it("sends action only for update", () => {
+    expect(rowForCheck(row)).not.toHaveProperty("action");
+    expect(rowForCheck(row, "skip")).not.toHaveProperty("action");
+    expect(rowForCheck(row, "update").action).toBe("update");
+  });
+  it("labels the send button", () => {
+    expect(sendLabel([ready, ready])).toBe("Send 2 to Meta");
+    expect(sendLabel([ready, upd])).toBe("Send 2 to Meta · 1 update");
+    expect(sendLabel([upd, { ...upd, row: 6 }])).toBe("Send 2 to Meta · 2 updates");
+    expect(sendCounts([ready, upd])).toEqual({ created: 1, updates: 1 });
+  });
+  it("treats sent and updated as done", () => {
+    expect(isDone({ row: 1, name: "a", language: "en", status: "updated" })).toBe(true);
+    expect(isDone({ row: 1, name: "a", language: "en", status: "refused" })).toBe(false);
+    expect(isDone(undefined)).toBe(false);
   });
 });

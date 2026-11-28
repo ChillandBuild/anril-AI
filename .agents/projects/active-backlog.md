@@ -47,6 +47,16 @@ Left from the build list (2026-11-24; #12 settled: Follow-ups stays under Engage
 - #20 / #30 WhatsApp copies of the 8 PM "not marked" nudge and the 9 AM campaign summary: both go as bell + push today; WhatsApp needs approved templates.
 - #28 Google Ads live connect + sync (spend, clicks): needs a Google Ads API developer token + OAuth app. Spend still comes from the report upload.
 - #31 Calling settings (record, keep period, IVR, missed call -> WhatsApp, voicemail, top up): mostly set in TeleCMI; needs a decision on what Anril controls.
+- #15 above (Uploads: undo, download taken out, sample) is already built (`2ad92edd`, `7c5e3832`); drop it from this list.
+
+### v9.2 leftovers — decided by Keerthi on 2026-11-28
+Code check of the 23 Nov pending list (124 items): 28 built, 37 partly, 25 held above, 3 parked by the pack, 31 not built and not tracked.
+The 36 partly built ones went on a decision page (https://claude.ai/artifact/9b99KRxFFkw28tN39qJ9YU, P-numbers from `git show 39755f99:docs/research/v92-pending-list.html`).
+29 are being built now. The rest:
+- **Later:** P6 first setup step 2 (add items, price list or photo inside the step + added-items list); P10 Home greeting on laptop, "Money in vs yesterday", "Ads ₹ per chat"; P17 Chats filter "Instagram post".
+- **Dropped — do not re-propose:** P31 Templates "Sending from" number picker; P67 Reach confirm best-time hint + "Change" links; P94 calling screen mute / hold / transfer / auto-dial next / voice note.
+- **Not decided:** P11 "Remind all" on Home's Still to collect (each reminder is a paid WhatsApp message).
+- **Not yet shown to anyone:** the 31 items that are not built at all and not tracked (setup steps 4 and "All connected", first-day Home, search chips, "AI is handling N" note, customer page + New bill / Likes, Inbound empty state, Couldn't answer Skip / asker / "AI said", Meta Ads "Why did this happen?", Instant forms Booked + call-back card, Reach steps 3 / 4 / Sent list, 8 Commerce items incl. the Catalogue › Labels 400, Call IQ Scripts / Scheduled calls / Assignment log, Settings home summaries, Automations results, WhatsApp-down page, "Bigger buttons on phone", offline laptop mode).
 
 ### v9.2 Batches N, O, P — shipped 2026-11-23 (migrations 326, 329, 330 live)
 - Migration 330 (Courses tables): its objects went live on 2026-11-23, but apply_migration was declined each time,

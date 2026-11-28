@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertCircle, ArrowLeft, Check, Download, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { API_URL, getAuthHeaders } from "@/lib/api";
-import { rowForCheck, type BulkResult, type BulkRow } from "../template-excel";
+import { isDone, rowForCheck, sendLabel, type BulkAction, type BulkResult, type BulkRow } from "../template-excel";
 import { RowEditor, RowList, type RowFilter } from "../components/bulk-review";
 import Section from "../components/builder-section";
 import { useAuthRole } from "../../contexts/AuthRoleContext";
@@ -32,6 +32,7 @@ const FILTERS: { key: RowFilter; label: string; cls: string }[] = [
   { key: "all", label: "All", cls: "bg-surface-subtle text-ink" },
   { key: "ready", label: "ready", cls: "bg-emerald-50 text-emerald-700" },
   { key: "need_fix", label: "need a fix", cls: "bg-red-50 text-red-700" },
+  { key: "update", label: "to update", cls: "bg-sky-50 text-sky-800" },
   { key: "exists", label: "already exist", cls: "bg-amber-50 text-amber-800" },
   { key: "removed", label: "removed", cls: "bg-slate-100 text-slate-600" },
 ];
@@ -63,6 +64,7 @@ export default function UploadTemplatesPage() {
   const [activeRow, setActiveRow] = useState<number | null>(null);
   const [mobileEditor, setMobileEditor] = useState(false);
   const [filter, setFilter] = useState<RowFilter>("all");
+  const [actions, setActions] = useState<Map<number, BulkAction>>(new Map());
   const [rechecking, setRechecking] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const recheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -70,27 +72,29 @@ export default function UploadTemplatesPage() {
 
   useEffect(() => () => { if (recheckTimer.current) clearTimeout(recheckTimer.current); }, []);
 
-  const isSent = (r: number) => results.get(r)?.status === "sent";
+  const isSent = (r: number) => isDone(results.get(r));
   const live = useMemo(() => (rows ?? []).filter((r) => !removed.has(r.row)), [rows, removed]);
   const counts = useMemo(() => ({
     all: rows?.length ?? 0,
     ready: live.filter((r) => r.status === "ready").length,
     need_fix: live.filter((r) => r.status === "need_fix").length,
     exists: live.filter((r) => r.status === "exists").length,
+    update: live.filter((r) => r.status === "update").length,
     removed: removed.size,
   }), [rows, live, removed]);
-  const toSend = live.filter((r) => r.status === "ready" && !unticked.has(r.row) && !isSent(r.row));
+  const toSend = live.filter((r) => (r.status === "ready" || r.status === "update") && !unticked.has(r.row) && !isSent(r.row));
   const shown = (rows ?? []).filter((r) =>
     filter === "all" ? true : filter === "removed" ? removed.has(r.row) : !removed.has(r.row) && r.status === filter,
   );
   const active = rows?.find((r) => r.row === activeRow) ?? null;
-  const sentCount = Array.from(results.values()).filter((r) => r.status === "sent").length;
+  const sentCount = Array.from(results.values()).filter((r) => isDone(r)).length;
 
   function reset() {
     setRows(null);
     setRemoved(new Set());
     setUnticked(new Set());
     setResults(new Map());
+    setActions(new Map());
     setActiveRow(null);
     setFilter("all");
     setFileName("");
@@ -122,17 +126,17 @@ export default function UploadTemplatesPage() {
   }
 
   /** Check every row still in the upload again (a fix in one row can clear a duplicate in another). */
-  function scheduleRecheck(nextRows: BulkRow[], nextRemoved: Set<number>) {
+  function scheduleRecheck(nextRows: BulkRow[], nextRemoved: Set<number>, nextActions: Map<number, BulkAction> = actions) {
     if (recheckTimer.current) clearTimeout(recheckTimer.current);
     const mine = ++version.current;
     setRechecking(true);
     recheckTimer.current = setTimeout(async () => {
       try {
-        const keep = nextRows.filter((r) => !nextRemoved.has(r.row) && results.get(r.row)?.status !== "sent");
+        const keep = nextRows.filter((r) => !nextRemoved.has(r.row) && !isDone(results.get(r.row)));
         const res = await fetch(`${API_URL}/api/v1/templates/bulk/recheck`, {
           method: "POST",
           headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-          body: JSON.stringify({ rows: keep.map(rowForCheck) }),
+          body: JSON.stringify({ rows: keep.map((r) => rowForCheck(r, nextActions.get(r.row))) }),
         });
         if (!res.ok) throw new Error(await errorText(res));
         const checked = new Map((await res.json()).rows.map((r: BulkRow) => [r.row, r]));
@@ -156,6 +160,14 @@ export default function UploadTemplatesPage() {
     scheduleRecheck(nextRows, removed);
   }
 
+  /** Skip or update a template whose name and language already exist: check the row again with that choice. */
+  function chooseAction(row: number, action: BulkAction) {
+    const next = new Map(actions);
+    next.set(row, action);
+    setActions(next);
+    scheduleRecheck(rows ?? [], removed, next);
+  }
+
   function removeRow(row: number, remove: boolean) {
     const next = new Set(removed);
     if (remove) next.add(row); else next.delete(row);
@@ -175,7 +187,7 @@ export default function UploadTemplatesPage() {
       const res = await fetch(`${API_URL}/api/v1/templates/bulk/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await getAuthHeaders()) },
-        body: JSON.stringify({ rows: toSend.map(rowForCheck) }),
+        body: JSON.stringify({ rows: toSend.map((r) => rowForCheck(r, actions.get(r.row))) }),
       });
       if (!res.ok) throw new Error(await errorText(res));
       const got = (await res.json()).results as BulkResult[];
@@ -276,7 +288,7 @@ export default function UploadTemplatesPage() {
               </ol>
             </section>
             <p className="text-[12.5px] leading-relaxed text-ink-muted">
-              Text headers only: picture, video and document headers are made in Create Template. Names that already exist are skipped, never changed.
+              Text headers only: picture, video and document headers are made in Create Template. For a name that already exists, choose Skip or Update on its row.
             </p>
           </aside>
         </div>
@@ -335,7 +347,14 @@ export default function UploadTemplatesPage() {
                   <p className="mb-4 font-display text-base font-bold text-ink">
                     Row {active.row} <span className="font-mono text-[14px] font-semibold text-ink-secondary">· {active.name || "(no name)"}</span>
                   </p>
-                  <RowEditor row={active} locked={isSent(active.row)} removed={removed.has(active.row)} onChange={editRow} />
+                  <RowEditor
+                    row={active}
+                    locked={isSent(active.row)}
+                    removed={removed.has(active.row)}
+                    action={actions.get(active.row) ?? "skip"}
+                    onAction={(a) => chooseAction(active.row, a)}
+                    onChange={editRow}
+                  />
                 </>
               ) : (
                 <p className="py-16 text-center text-sm text-ink-muted">Pick a row to see it.</p>
@@ -376,7 +395,7 @@ export default function UploadTemplatesPage() {
               className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-bold text-white shadow-md transition hover:bg-primary/90 disabled:opacity-50 sm:flex-none"
             >
               {busy === "sending" && <Loader2 size={14} className="animate-spin" />}
-              {busy === "sending" ? "Sending…" : `Send ${toSend.length} to Meta for approval`}
+              {busy === "sending" ? "Sending…" : sendLabel(toSend)}
             </button>
             </>
             )}

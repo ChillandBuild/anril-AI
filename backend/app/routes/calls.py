@@ -39,6 +39,7 @@ from app.services.assignment_rules import any_mode, get_channel_rules, resolve_r
 from app.services.segmentation import new_lead_score_and_segment
 from app.services.attendance import mark_activity_today
 from app.services.call_rules import effective_calling_mode, pre_dial_block
+from app.services.dial_check import DO_NOT_CALL_MESSAGE, SAID_STOP_MESSAGE, find_lead_for_dial
 
 
 logger = logging.getLogger(__name__)
@@ -270,23 +271,23 @@ async def initiate_call(payload: InitiateCall, ctx: dict = Depends(get_tenant_an
         if not lead.data:
             raise HTTPException(status_code=404, detail="Lead not found")
         if lead.data.get("do_not_call"):
-            raise HTTPException(status_code=400, detail="Lead is on Do Not Call")
+            raise HTTPException(status_code=400, detail=DO_NOT_CALL_MESSAGE)
         if lead.data.get("opted_out"):
-            raise HTTPException(status_code=400, detail="This customer is on Said stop, so they can't be called")
+            raise HTTPException(status_code=400, detail=SAID_STOP_MESSAGE)
         lead_phone = lead.data["phone"]
         matched_lead_id = str(payload.lead_id)
         matched_lead_name = lead.data.get("name")
     else:
         lead_phone = payload.phone
         # try to find a lead by phone so live notes can be linked
-        match = db.table("leads").select("id,name,do_not_call,opted_out").eq("phone", lead_phone).eq("tenant_id", tenant_id).maybe_single().execute()
-        if match and match.data:
-            if match.data.get("do_not_call"):
-                raise HTTPException(status_code=400, detail="Lead is on Do Not Call")
-            if match.data.get("opted_out"):
-                raise HTTPException(status_code=400, detail="This customer is on Said stop, so they can't be called")
-            matched_lead_id = match.data["id"]
-            matched_lead_name = match.data.get("name")
+        match = find_lead_for_dial(db, tenant_id, lead_phone)
+        if match:
+            if match.get("do_not_call"):
+                raise HTTPException(status_code=400, detail=DO_NOT_CALL_MESSAGE)
+            if match.get("opted_out"):
+                raise HTTPException(status_code=400, detail=SAID_STOP_MESSAGE)
+            matched_lead_id = match["id"]
+            matched_lead_name = match.get("name")
         else:
             # auto-create a minimal lead so notes can always be saved
             try:
@@ -1140,10 +1141,114 @@ async def stats_today(ctx: dict = Depends(get_tenant_and_role)):
     }
 
 
+def _caller_may_see_lead(db, ctx: dict, lead_id: str) -> bool:
+    """Who the dial check may name. Owners and managers: any lead of the business. A telecaller: only a
+    lead assigned to them, and only when their numbers are not hidden (a hidden number must not be
+    guessable by typing it). The block rows are still shown to everyone."""
+    if ctx.get("role") != "caller":
+        return True
+    from app.routes.leads import LeadFilters, _filtered_leads_query
+    from app.services.call_rules import phone_mask_for
+    if phone_mask_for(db, ctx["tenant_id"], ctx):
+        return False
+    try:
+        query = _filtered_leads_query(db, ctx, LeadFilters(), columns="id", include_opted_out=True)
+        if query is None:
+            return False
+        return bool((query.eq("id", lead_id).limit(1).execute().data) or [])
+    except Exception as e:
+        logger.warning("dial-check scope read failed for tenant %s: %s", ctx.get("tenant_id"), e)
+        return False
+
+
+@router.get("/dial-check")
+async def dial_check(
+    phone: str = Query(..., min_length=1),
+    caller_id: str | None = Query(None),
+    ctx: dict = Depends(get_tenant_and_role),
+):
+    """Manual Dial "Before you call": read-only. Same rules initiate_call enforces, shown before the call."""
+    _require_dialer_permission(ctx)
+    from app.services.call_rules import (
+        calls_made_today, get_rules, ist_day_start_utc, now_ist, phone_mask_for,
+    )
+    from app.services.dial_check import build_checks
+    from app.services.google_ads_report import came_from_labels
+
+    tenant_id = ctx["tenant_id"]
+    role = ctx.get("role")
+    db = get_supabase()
+    # A telecaller always checks as themself, same as initiate_call.
+    if role == "caller" and ctx.get("caller_id"):
+        who = str(ctx["caller_id"])
+    else:
+        who = str(caller_id) if caller_id else ctx.get("caller_id")
+    business_provider = get_telecalling_config(tenant_id, db=db).get("calling_provider", "telecmi")
+    mode = effective_calling_mode(db, tenant_id, who, business_provider=business_provider)
+    now_utc = datetime.now(timezone.utc)
+
+    # Never show a check as passed when we could not read it.
+    try:
+        rules = get_rules(db, tenant_id)
+        lead = find_lead_for_dial(db, tenant_id, phone)
+        limit_reached = False
+        if role == "caller" and rules["daily_limit_on"] and who:
+            limit_reached = calls_made_today(db, tenant_id, who, now_utc) >= rules["daily_limit"]
+    except Exception as e:
+        logger.warning("dial-check read failed for tenant %s: %s", tenant_id, e)
+        raise HTTPException(
+            status_code=503,
+            detail="Couldn't check this number right now. The Call button still checks Said stop and Do not call.",
+        )
+
+    # Advisory only: a failed read here just leaves the "called today" row out.
+    calls_today, last_call_at = 0, None
+    if lead:
+        try:
+            logs = (
+                db.table("call_logs").select("created_at")
+                .eq("tenant_id", tenant_id).eq("lead_id", lead["id"])
+                .gte("created_at", ist_day_start_utc(now_utc).isoformat())
+                .order("created_at", desc=True).execute()
+            ).data or []
+            calls_today = len(logs)
+            if logs:
+                last_call_at = datetime.fromisoformat(str(logs[0]["created_at"]).replace("Z", "+00:00"))
+        except Exception as e:
+            logger.warning("dial-check calls-today read failed for tenant %s: %s", tenant_id, e)
+            calls_today, last_call_at = 0, None
+
+    checks, blocked_reason = build_checks(
+        lead=lead, rules=rules, role=role, calls_today=calls_today,
+        last_call_at=last_call_at, limit_reached=limit_reached, now=now_ist(now_utc),
+    )
+
+    customer = None
+    if lead and _caller_may_see_lead(db, ctx, lead["id"]):
+        try:
+            came_from = came_from_labels(db, tenant_id, [lead]).get(lead["id"])
+        except Exception as e:
+            logger.warning("dial-check came_from failed for tenant %s: %s", tenant_id, e)
+            came_from = None
+        mask = phone_mask_for(db, tenant_id, ctx)
+        customer = {
+            "id": lead["id"], "name": lead.get("name"), "segment": lead.get("segment"),
+            "phone": mask(lead["phone"]) if mask else lead["phone"], "came_from": came_from,
+        }
+    return {
+        "customer": customer,
+        "checks": checks,
+        "calling_from": "sim" if mode == "sim_basic" else "office",
+        "can_call": blocked_reason is None,
+        "blocked_reason": blocked_reason,
+    }
+
+
 @router.get("/recent")
 async def recent_calls(
     limit: int = Query(20, ge=1, le=50),
     caller_id: str | None = Query(None),
+    today: bool = Query(False),
     ctx: dict = Depends(get_tenant_and_role),
 ):
     """Latest calls across all leads — the dialer's Recent tab.
@@ -1151,7 +1256,10 @@ async def recent_calls(
     Per-lead history already exists (`/leads/{id}/call-logs`); this answers the
     other question a telecaller has ("what did I call today?") without leaving
     the dialer. A caller only ever sees their own calls, whatever they ask for.
+    `today=true` keeps only calls made since midnight IST.
     """
+    from app.services.call_rules import ist_day_start_utc
+
     db = get_supabase()
     query = (
         db.table("call_logs")
@@ -1160,6 +1268,8 @@ async def recent_calls(
         )
         .eq("tenant_id", ctx["tenant_id"])
     )
+    if today:
+        query = query.gte("created_at", ist_day_start_utc().isoformat())
     if ctx.get("role") == "caller" and ctx.get("caller_id"):
         query = query.eq("caller_id", ctx["caller_id"])
     elif caller_id:

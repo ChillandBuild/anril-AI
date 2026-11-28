@@ -226,7 +226,8 @@ def _buttons(raw: dict) -> list[dict]:
 def check_rows(rows: list[dict], existing: list[dict]) -> list[dict]:
     """One verdict per row. `existing` = this account's templates (name, language, body_text, footer_text).
 
-    status: ready | need_fix | exists (same name and language: skipped, never updated).
+    status: ready | need_fix | exists (same name and language: skipped) | update (same name and language,
+    row sent with action "update" and no problems: it edits the existing template).
     issues: [{field, text}] so the review screen can mark the field; problems: the same texts as a list.
     Fields: name, type, language, header, header_example, body, example_1..5, footer, button_1..3.
     """
@@ -352,7 +353,16 @@ def check_rows(rows: list[dict], existing: list[dict]) -> list[dict]:
             "buttons": clean_buttons,
         }
 
+        match = None
         if language is not None and name and (name, language) in pairs:
+            match = next(e for e in existing_rows if e.get("name") == name and e.get("language") == language)
+            verdict["existing_id"] = match.get("id")
+            verdict["existing_status"] = match.get("status")
+            verdict["existing_type"] = match.get("category")
+            verdict["existing_header_media"] = match.get("header_media_type")
+            verdict["existing_reached_meta"] = bool(match.get("meta_template_id"))
+        updating = match is not None and _cell(raw.get("action")).lower() == "update"
+        if match is not None and not updating:
             verdict["status"] = "exists"
             issues = [{"field": "name", "text": "Already on your account. Skipped."}]
         else:
@@ -362,7 +372,7 @@ def check_rows(rows: list[dict], existing: list[dict]) -> list[dict]:
                     add("name", f"Same name and language as row {seen_in_file[key]}.")
                 else:
                     seen_in_file[key] = raw.get("row")
-                if name in names:
+                if name in names and not updating:
                     add("name", "A template with this name already exists in another language. Pick a different name.")
             if body and not issues:
                 twin = next(
@@ -374,7 +384,9 @@ def check_rows(rows: list[dict], existing: list[dict]) -> list[dict]:
                 if twin:
                     add("body", f"Template '{twin.get('name')}' already has this exact body and footer. "
                                 "Meta rejects duplicates, so change the wording.")
-            verdict["status"] = "need_fix" if issues else "ready"
+            verdict["status"] = "need_fix" if issues else ("update" if updating else "ready")
+            if updating:
+                verdict["action"] = "update"
         verdict["issues"] = issues
         verdict["problems"] = [i["text"] for i in issues]
         out.append(verdict)
@@ -411,7 +423,21 @@ def to_payload(verdict: dict) -> dict:
     return payload
 
 
+def to_update_payload(verdict: dict) -> dict:
+    """Arguments for routes.templates.UpdateTemplate from an "update" row: no name, language or category."""
+    full = to_payload(verdict)
+    keys = ("body_text", "body_examples", "header_example")
+    out = {k: full[k] for k in keys if k in full}
+    # A missing field means "keep what's there" on an edit, so a blank cell is sent as an explicit clear.
+    out["header_text"] = full.get("header_text", "")
+    out["footer_text"] = full.get("footer_text", "")
+    out["buttons"] = full.get("buttons", [])
+    return out
+
+
 CreateFn = Callable[[dict], Awaitable[dict]]
+UpdateFn = Callable[[str, dict], Awaitable[dict]]
+_EDITABLE = ("APPROVED", "REJECTED", "PAUSED")
 
 
 def _reason(exc: Exception) -> str:
@@ -429,10 +455,10 @@ def _reason(exc: Exception) -> str:
     return str(exc) or "Couldn't send this template."
 
 
-async def submit_rows(rows: list[dict], existing: list[dict], create: CreateFn) -> list[dict]:
+async def submit_rows(rows: list[dict], existing: list[dict], create: CreateFn, update: UpdateFn | None = None) -> list[dict]:
     """Re-check every row the owner ticked, then create the ready ones one after another.
 
-    Returns one result per row: {row, name, language, status: sent | refused | skipped, reason?}.
+    Returns one result per row: {row, name, language, status: sent | updated | refused | skipped, reason?, note?}.
     Sequential on purpose: Meta rate-limits template creation and each send changes what "exists" means.
     """
     verdicts = check_rows(rows, existing)
@@ -440,6 +466,30 @@ async def submit_rows(rows: list[dict], existing: list[dict], create: CreateFn) 
     created: list[dict] = []
     for v in verdicts:
         base = {"row": v["row"], "name": v["name"], "language": v["language"]}
+        if v["status"] == "update" and update is not None:
+            if v.get("existing_reached_meta") and (v.get("existing_status") or "").upper() not in _EDITABLE:
+                results.append({**base, "status": "refused",
+                                "reason": "Meta is still reviewing this template, so it can't be changed yet."})
+                continue
+            payload = to_update_payload(v)
+            media = (v.get("existing_header_media") or "NONE").upper() != "NONE"
+            if media:  # the sheet only holds text headers: a picture/video header stays as it is
+                payload.pop("header_text", None)
+            try:
+                await update(v["existing_id"], payload)
+            except Exception as e:
+                results.append({**base, "status": "refused", "reason": _reason(e)})
+                continue
+            result = {**base, "status": "updated"}
+            notes = []
+            if v.get("existing_type") and v["type"] != v["existing_type"]:
+                notes.append(f"Type stays {v['existing_type']}: Meta doesn't let a template change type.")
+            if media:
+                notes.append("Picture/video header kept: change it in Create Template.")
+            if notes:
+                result["note"] = " ".join(notes)
+            results.append(result)
+            continue
         if v["status"] != "ready":
             results.append({**base, "status": "skipped", "reason": " ".join(v["problems"]) or "Not ready."})
             continue

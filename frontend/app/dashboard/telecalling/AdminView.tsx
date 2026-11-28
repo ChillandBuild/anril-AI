@@ -12,6 +12,8 @@ import LeadDetailPanel from "./components/LeadDetailPanel";
 import CockpitModals from "./components/CockpitModals";
 import ManualDialPanel from "./components/ManualDialPanel";
 import RecentCallsTab from "./components/RecentCallsTab";
+import DialChecks from "./components/DialChecks";
+import { useDialCheck } from "./lib/dialCheck";
 import { useCallingCockpit } from "./lib/useCallingCockpit";
 import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
@@ -66,6 +68,7 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
   }, [refreshQueueLeads, refreshDashboard]);
 
   const cockpit = useCallingCockpit({ callerId: selectedCallerId, blockingWrapups: false, refreshQueue });
+  const dialCheck = useDialCheck(cockpit.manualPhone, selectedCallerId, cockpit.manualDialing);
 
   useEffect(() => {
     const leadId = searchParams.get("lead_id");
@@ -82,6 +85,8 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
 
 
   const selectedCallerName = callers.find((c) => c.id === selectedCallerId)?.name ?? "Admin (me)";
+  const pickedCallerName = selectedCallerId ? callers.find((c) => c.id === selectedCallerId)?.name ?? null : null;
+  const todayBy = pickedCallerName ? `by ${pickedCallerName}` : "by your team";
 
   return (
     <div className="flex min-h-0 flex-col lg:min-h-[calc(100vh-8rem)] bg-transparent xl:-my-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:overflow-hidden">
@@ -135,7 +140,7 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
             {leftTab === "recent" ? (
               <RecentCallsTab callerId={selectedCallerId} onSelectLead={cockpit.setSelectedLeadId} />
             ) : leftTab === "dialer" ? (
-              <ManualDialPanel cockpit={cockpit} readOnly={readOnly} />
+              <ManualDialPanel cockpit={cockpit} readOnly={readOnly} dialCheck={dialCheck} yourName={pickedCallerName} todayBy={todayBy} />
             ) : (
               <>
                 {/* Search */}
@@ -252,7 +257,11 @@ export default function AdminView({ fallbackData, readOnly = false }: { fallback
         {/* Right Side: Lead Profile (8/12) — identical to telecaller cockpit */}
         <div className="hidden min-h-[380px] flex-col overflow-hidden rounded-3xl border border-[#e2e8f0] bg-[#f8fafc] shadow-sm xl:col-span-8 xl:flex xl:min-h-0">
           <div className="flex-1 overflow-y-auto">
-            {!cockpit.selectedLeadId ? (
+            {!cockpit.selectedLeadId && leftTab === "dialer" ? (
+              <div className="p-5">
+                <DialChecks phone={cockpit.manualPhone} dial={dialCheck} yourName={pickedCallerName} todayBy={todayBy} />
+              </div>
+            ) : !cockpit.selectedLeadId ? (
               <div className="min-h-full flex flex-col items-center justify-center p-12 text-center bg-gradient-to-br from-[#f8fafc]/40 to-primary-light/10">
                 <div className="relative mb-6">
                   <div className="absolute inset-0 bg-primary/5 blur-2xl rounded-full scale-150 animate-pulse" />

@@ -200,6 +200,13 @@ def calls_made_today(db, tenant_id: str, caller_id: str, now: datetime | None = 
     return int(res.count if res.count is not None else len(res.data or []))
 
 
+def within_calling_hours(rules: dict, now: datetime | None = None) -> bool:
+    """True when `now` (IST) falls inside the business calling hours."""
+    t = now_ist(now)
+    minute = t.hour * 60 + t.minute
+    return _minutes(rules["calling_start"]) <= minute < _minutes(rules["calling_end"])
+
+
 def pre_dial_block(db, tenant_id: str, *, role: str | None, caller_id: str | None, now: datetime | None = None) -> str | None:
     """The plain message to refuse a dial with, or None when the call may go ahead.
 
@@ -211,9 +218,7 @@ def pre_dial_block(db, tenant_id: str, *, role: str | None, caller_id: str | Non
     try:
         rules = get_rules(db, tenant_id)
         if rules["calling_hours_on"]:
-            t = now_ist(now)
-            minute = t.hour * 60 + t.minute
-            if not _minutes(rules["calling_start"]) <= minute < _minutes(rules["calling_end"]):
+            if not within_calling_hours(rules, now):
                 return hours_message(rules)
         if rules["daily_limit_on"] and caller_id:
             if calls_made_today(db, tenant_id, caller_id, now) >= rules["daily_limit"]:

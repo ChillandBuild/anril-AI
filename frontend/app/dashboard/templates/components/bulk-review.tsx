@@ -7,24 +7,28 @@ import {
   BUTTON_KINDS,
   BUTTON_SLOTS,
   buttonSlots,
+  isDone,
   issuesFor,
   previewOf,
   variablesIn,
+  type BulkAction,
   type BulkButton,
   type BulkResult,
   type BulkRow,
 } from "../template-excel";
 import WhatsAppPreview from "./whatsapp-preview";
 
-export type RowFilter = "all" | "ready" | "need_fix" | "exists" | "removed";
+export type RowFilter = "all" | "ready" | "need_fix" | "exists" | "update" | "removed";
 
 const STATUS: Record<BulkRow["status"], { text: string; cls: string; dot: string }> = {
   ready: { text: "Ready", cls: "text-emerald-700", dot: "bg-emerald-500" },
   need_fix: { text: "Needs a fix", cls: "text-red-700", dot: "bg-red-500" },
   exists: { text: "Already exists", cls: "text-amber-800", dot: "bg-amber-500" },
+  update: { text: "Will update", cls: "text-sky-800", dot: "bg-sky-500" },
 };
 const RESULT: Record<BulkResult["status"], { text: string; cls: string }> = {
   sent: { text: "Sent to Meta", cls: "bg-emerald-50 text-emerald-700" },
+  updated: { text: "Updated", cls: "bg-emerald-50 text-emerald-700" },
   refused: { text: "Meta refused", cls: "bg-red-50 text-red-700" },
   skipped: { text: "Not sent", cls: "bg-slate-100 text-slate-700" },
 };
@@ -56,9 +60,9 @@ export function RowList({
       {rows.map((r) => {
         const isRemoved = removed.has(r.row);
         const result = results.get(r.row);
-        const sent = result?.status === "sent";
+        const sent = isDone(result);
         const st = STATUS[r.status];
-        const canTick = !isRemoved && !sent && r.status === "ready";
+        const canTick = !isRemoved && !sent && (r.status === "ready" || r.status === "update");
         return (
           <li
             key={r.row}
@@ -99,8 +103,11 @@ export function RowList({
               {!isRemoved && !result && r.status === "need_fix" && (
                 <span className="ml-8 mt-0.5 block truncate text-[12px] text-red-700">{r.problems[0]}</span>
               )}
-              {result?.reason && result.status !== "sent" && (
+              {result?.reason && !isDone(result) && (
                 <span className="ml-8 mt-0.5 block text-[12px] text-red-700">{result.reason}</span>
+              )}
+              {result?.note && (
+                <span className="ml-8 mt-0.5 block text-[12px] text-ink-secondary">{result.note}</span>
               )}
             </button>
             {!sent && (
@@ -154,12 +161,17 @@ export function RowEditor({
   row,
   locked,
   removed,
+  action,
+  onAction,
   onChange,
 }: {
   row: BulkRow;
   /** Sent already: shown, not editable. */
   locked: boolean;
   removed: boolean;
+  /** For a name that already exists: skip it or update it. */
+  action: BulkAction;
+  onAction: (action: BulkAction) => void;
   onChange: (next: BulkRow) => void;
 }) {
   const set = (patch: Partial<BulkRow>) => onChange({ ...row, ...patch });
@@ -171,18 +183,43 @@ export function RowEditor({
     set({ buttons: next });
   };
   const disabled = locked || removed;
-  const exists = row.status === "exists";
+  const updating = action === "update";
+  // Already on the account: skipped, or (when chosen) edited. A row that still needs a fix stays in update mode.
+  const existing = row.status === "exists" || row.status === "update" || updating;
+  const skipped = existing && !updating;
 
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
       <fieldset disabled={disabled} className="min-w-0 space-y-3.5 disabled:opacity-70">
-        {exists && (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] text-amber-900">
-            A template with this name and language is already on your account, so this row is skipped. Change the name to send it as a new template.
-          </p>
+        {existing && (
+          <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-900">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="font-semibold">Already exists. Skip or update?</p>
+              <div className="w-32">
+                <Select
+                  size="sm"
+                  aria-label="Skip or update"
+                  value={action}
+                  disabled={disabled}
+                  onChange={(v) => onAction(v as BulkAction)}
+                  options={[{ value: "skip", label: "Skip" }, { value: "update", label: "Update" }]}
+                />
+              </div>
+            </div>
+            {skipped ? (
+              <p>A template with this name and language is already on your account, so this row is skipped. Change the name to send it as a new template.</p>
+            ) : (
+              <p>Update sends your changes to Meta for review again. Meta allows 1 change a day and 10 a month on an approved template.</p>
+            )}
+          </div>
         )}
-        <Field label="Template name" hint="small letters, numbers and _" errors={exists ? [] : issuesFor(row, "name")}>
-          <input className={`${inputCls(!exists && issuesFor(row, "name").length > 0)} font-mono`} value={row.name} onChange={(e) => set({ name: e.target.value })} />
+        <Field label="Template name" hint="small letters, numbers and _" errors={skipped ? [] : issuesFor(row, "name")}>
+          <input
+            className={`${inputCls(!skipped && issuesFor(row, "name").length > 0)} font-mono`}
+            value={row.name}
+            disabled={updating}
+            onChange={(e) => set({ name: e.target.value })}
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Type" errors={issuesFor(row, "type")}>
@@ -201,7 +238,7 @@ export function RowEditor({
               value={row.language ?? ""}
               onChange={(v) => set({ language: v })}
               placeholder="Pick a language"
-              disabled={disabled}
+              disabled={disabled || updating}
               options={LANGUAGES.map((l) => ({ value: l.code, label: l.label }))}
             />
           </Field>
@@ -287,9 +324,9 @@ export function RowEditor({
       <div className="lg:sticky lg:top-0 lg:self-start">
         <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-muted">How it looks on WhatsApp</p>
         <WhatsAppPreview {...previewOf(row)} />
-        {row.status === "ready" && !locked && !removed && (
+        {(row.status === "ready" || row.status === "update") && !locked && !removed && (
           <p className="mt-2 flex items-center gap-1.5 text-[12.5px] font-medium text-emerald-700">
-            <Check size={13} aria-hidden="true" /> Ready to send
+            <Check size={13} aria-hidden="true" /> {row.status === "update" ? "Ready to update" : "Ready to send"}
           </p>
         )}
       </div>

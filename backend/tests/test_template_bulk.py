@@ -207,7 +207,7 @@ def test_check_route_counts(api):
     res = upload(client, xlsx([row(), row(name="Bad Name"), row(name="already_here")]))
     assert res.status_code == 200
     body = res.json()
-    assert body["counts"] == {"ready": 1, "need_fix": 1, "exists": 1}
+    assert body["counts"] == {"ready": 1, "need_fix": 1, "exists": 1, "update": 0}
     assert [r["status"] for r in body["rows"]] == ["ready", "need_fix", "exists"]
     assert body["rows"][1]["issues"][0]["field"] == "name"
 
@@ -286,3 +286,89 @@ def test_single_create_is_a_thin_wrapper_over_the_shared_helper():
     from app.routes import templates
 
     assert "create_template_record(payload, tenant_id)" in inspect.getsource(templates.create_template)
+
+
+# ── update an existing template ───────────────────────────────────────────────
+
+def _exists(status="APPROVED", category="MARKETING"):
+    return [{"id": "tpl-1", "name": "festival_offer", "language": "en", "body_text": "old", "status": status,
+             "category": category, "meta_template_id": "m-1"}]
+
+
+def _run_submit(rows, existing, update=None):
+    import asyncio
+
+    from app.services import template_bulk
+
+    created = AsyncMock()
+    results = asyncio.run(template_bulk.submit_rows(rows, existing, created, update))
+    return results, created
+
+
+def test_exists_row_carries_existing_id():
+    [v] = check([row()], existing=_exists())
+    assert v["status"] == "exists"
+    assert (v["existing_id"], v["existing_status"], v["existing_type"]) == ("tpl-1", "APPROVED", "MARKETING")
+
+
+def test_update_action_validates_like_a_new_row():
+    from app.services import template_bulk
+
+    rows = template_bulk.parse_workbook(xlsx([row(examples=("Priya",)), row(name="festival_offer")]))
+    bad = {**rows[0], "action": "update"}
+    [v] = template_bulk.check_rows([bad], _exists())
+    assert v["status"] == "need_fix" and "example_2" in fields(v)
+    ok = {**rows[1], "action": "update"}
+    [v2] = template_bulk.check_rows([ok], _exists())
+    assert v2["status"] == "update" and v2["existing_id"] == "tpl-1" and not v2["issues"]
+
+
+def _update_rows(**kw):
+    from app.services import template_bulk
+
+    [r] = template_bulk.parse_workbook(xlsx([row(**kw)]))
+    return [{**r, "action": "update"}]
+
+
+def test_submit_update_calls_update_not_create():
+    update = AsyncMock(return_value={})
+    results, created = _run_submit(_update_rows(), _exists(), update)
+    assert results[0]["status"] == "updated"
+    created.assert_not_called()
+    eid, payload = update.call_args.args
+    assert eid == "tpl-1"
+    assert payload["body_text"].startswith("Hi {{1}}") and payload["body_examples"] == ["Priya", "20%"]
+    assert not {"name", "language", "category"} & set(payload)
+
+
+def test_submit_update_refused_while_pending():
+    update = AsyncMock()
+    results, _ = _run_submit(_update_rows(), _exists(status="PENDING"), update)
+    assert results[0]["status"] == "refused"
+    assert results[0]["reason"] == "Meta is still reviewing this template, so it can't be changed yet."
+    update.assert_not_called()
+
+
+def test_submit_update_keeps_type_with_note():
+    update = AsyncMock(return_value={})
+    results, _ = _run_submit(_update_rows(type_="Utility"), _exists(category="MARKETING"), update)
+    assert results[0]["status"] == "updated"
+    assert results[0]["note"] == "Type stays MARKETING: Meta doesn't let a template change type."
+    update.assert_called_once()
+
+
+def test_update_row_with_blank_footer_header_buttons_sends_explicit_clears():
+    update = AsyncMock(return_value={})
+    rows = _update_rows(footer="", buttons=())
+    _run_submit(rows, _exists(), update)
+    payload = update.call_args.args[1]
+    assert payload["footer_text"] == "" and payload["header_text"] == "" and payload["buttons"] == []
+
+
+def test_update_keeps_media_header_with_note():
+    update = AsyncMock(return_value={})
+    existing = [{**_exists()[0], "header_media_type": "IMAGE"}]
+    results, _ = _run_submit(_update_rows(header_text="Ignored"), existing, update)
+    assert "header_text" not in update.call_args.args[1]
+    assert results[0]["status"] == "updated"
+    assert "Picture/video header kept: change it in Create Template." in results[0]["note"]

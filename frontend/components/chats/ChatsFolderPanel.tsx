@@ -107,64 +107,22 @@ const COLUMNS: CsvColumn<Lead>[] = [
   { header: "Why", value: (l) => archiveWhy(l) },
 ];
 
-const FOLDER: Record<FolderView, {
-  title: string;
-  icon: typeof Archive;
-  noun: string;
-  columns: CsvColumn<Lead>[];
-  file: string;
-  emptyTitle: string;
-  emptyText: string;
-  actionLabel: string;
-  actionTitle: string;
-  dateHeader: string;
-}> = {
-  archived: {
-    title: "Archived",
-    icon: Archive,
-    noun: "archived",
-    columns: COLUMNS,
-    file: "archived-chats",
-    emptyTitle: "Nothing archived",
-    emptyText: "Archive a chat from its ⋯ menu in the Inbox to tidy it away.",
-    actionLabel: "Move back",
-    actionTitle: "Put this chat back in the Inbox",
-    dateHeader: "Archived",
-  },
-  blocked: {
-    title: "Blocked",
-    icon: Ban,
-    noun: "blocked",
-    columns: BLOCKED_COLUMNS,
-    file: "blocked-contacts",
-    emptyTitle: "No one is blocked",
-    emptyText: "Block anyone from the ⋯ menu on their chat.",
-    actionLabel: "Unblock",
-    actionTitle: "Unblock this person",
-    dateHeader: "Blocked",
-  },
-};
+const EMPTY_TITLE = "Nothing archived";
+const EMPTY_TEXT = "Archive a chat from its ⋯ menu in the Inbox to tidy it away.";
 
 /**
- * Chats > Archived and Chats > Blocked: one chat table per tab, with search and filters, ticks and
- * Export. Archived chats come back with Move back, blocked people with Unblock.
+ * Chats > Archived & blocked: the archived chat table (search, filters, ticks, Export, Move back)
+ * with the Blocked list and the Blocked-vs-Said-stop note beside it.
  */
 export function ChatsFolderPanel({
-  mode,
   onOpenChat,
   canReply,
   canExport,
-  onSeeBlocked,
 }: {
-  mode: FolderView;
   onOpenChat: (leadId: string) => void;
   canReply: boolean;
   canExport: boolean;
-  /** Archived shows the blocked list beside it; this opens the full Blocked tab. */
-  onSeeBlocked?: () => void;
 }) {
-  const cfg = FOLDER[mode];
-  const Icon = cfg.icon;
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [channel, setChannel] = useState("");
@@ -189,15 +147,15 @@ export function ChatsFolderPanel({
   const load = useCallback(async () => {
     const f: ArchivedFilters = { q: debounced, channel, segment, within };
     try {
-      const page = await fetchView(mode, f, PAGE, 0);
+      const page = await fetchView("archived", f, PAGE, 0);
       setRows(page.leads);
       setTotal(page.total);
     } catch {
-      toast.error(`Couldn't load ${cfg.noun} chats`);
+      toast.error("Couldn't load archived chats");
     } finally {
       setLoading(false);
     }
-  }, [mode, cfg.noun, debounced, channel, segment, within]);
+  }, [debounced, channel, segment, within]);
 
   useEffect(() => {
     setPicked(new Set());
@@ -208,7 +166,7 @@ export function ChatsFolderPanel({
     if (loadingMore || rows.length >= total) return;
     setLoadingMore(true);
     try {
-      const page = await fetchView(mode, filters, PAGE, rows.length);
+      const page = await fetchView("archived", filters, PAGE, rows.length);
       setRows((prev) => {
         const seen = new Set(prev.map((l) => l.id));
         return [...prev, ...page.leads.filter((l) => !seen.has(l.id))];
@@ -221,18 +179,17 @@ export function ChatsFolderPanel({
     }
   }
 
-  // Both buttons are toggles on the same lead: archived -> back in the Inbox, blocked -> unblocked.
+  // Archive is a toggle on the lead, so calling it again puts the chat back in the Inbox.
   async function putBack(lead: Lead) {
     setBusyId(lead.id);
     try {
-      if (mode === "archived") await api.leads.archive(lead.id);
-      else await api.leads.block(lead.id);
+      await api.leads.archive(lead.id);
       setRows((prev) => prev.filter((l) => l.id !== lead.id));
       setTotal((t) => Math.max(0, t - 1));
       setPicked((prev) => { const next = new Set(prev); next.delete(lead.id); return next; });
-      toast.success(mode === "archived" ? `${displayName(lead)} is back in the Inbox` : `${displayName(lead)} is unblocked`);
+      toast.success(`${displayName(lead)} is back in the Inbox`);
     } catch {
-      toast.error(mode === "archived" ? "Couldn't move it back" : "Couldn't unblock");
+      toast.error("Couldn't move it back");
     } finally {
       setBusyId(null);
     }
@@ -242,8 +199,8 @@ export function ChatsFolderPanel({
     if (exporting) return;
     setExporting(true);
     try {
-      const out = picked.size ? rows.filter((l) => picked.has(l.id)) : await fetchAll(mode, filters); // everything the filters match
-      downloadCsv(`${cfg.file}-${today()}.csv`, out, cfg.columns);
+      const out = picked.size ? rows.filter((l) => picked.has(l.id)) : await fetchAll("archived", filters); // everything the filters match
+      downloadCsv(`archived-chats-${today()}.csv`, out, COLUMNS);
       toast.success("Export downloaded");
     } catch {
       toast.error("Couldn't export. Try again.");
@@ -266,12 +223,12 @@ export function ChatsFolderPanel({
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 md:px-6">
-        <div className={cn("mx-auto grid min-w-0 items-start gap-4", mode === "archived" ? "max-w-[1440px] xl:grid-cols-[minmax(0,1fr)_340px]" : "max-w-[1100px]")}>
+        <div className="mx-auto grid min-w-0 max-w-[1440px] items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-card">
             <div className="flex flex-col gap-3 border-b border-border/70 px-3 py-3 md:px-5">
               <h3 className="flex items-center gap-2 font-display text-[15px] font-bold text-ink">
-                <Icon size={15} className={mode === "blocked" ? "text-red-500" : "text-ink-muted"} /> {cfg.title}
+                <Archive size={15} className="text-ink-muted" /> Archived
                 <span className="font-body text-[13px] font-semibold text-ink-muted">{total.toLocaleString("en-IN")}</span>
               </h3>
               <div className="flex flex-wrap items-center gap-2">
@@ -281,7 +238,7 @@ export function ChatsFolderPanel({
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="Search name or phone…"
-                    aria-label={`Search ${cfg.noun} chats`}
+                    aria-label="Search archived chats"
                     className="h-8 w-full rounded-xl border border-primary-100/80 bg-white pl-8 pr-7 font-body text-xs text-gray-800 outline-none placeholder:text-gray-400 focus:border-[var(--primary-600)] focus:ring-2 focus:ring-[var(--primary-600)]/20"
                   />
                   {query && (
@@ -304,7 +261,7 @@ export function ChatsFolderPanel({
                     type="button"
                     onClick={() => void exportRows()}
                     disabled={exporting || exportCount === 0}
-                    title={picked.size ? "Download the ticked chats as a spreadsheet" : `Download every ${cfg.noun} chat these filters show`}
+                    title={picked.size ? "Download the ticked chats as a spreadsheet" : "Download every archived chat these filters show"}
                     className="inline-flex h-8 items-center gap-1.5 rounded-xl border border-primary-100/80 bg-white px-3 font-label text-xs font-semibold text-gray-700 shadow-xs hover:border-primary-200 hover:bg-primary-50/50 disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
@@ -331,7 +288,7 @@ export function ChatsFolderPanel({
                     )}
                     <th className={cn("py-3 pr-4", canExport ? "pl-2" : "pl-5")}>Customer</th>
                     <th className="px-4 py-3">Last message</th>
-                    <th className="px-4 py-3">{cfg.dateHeader}</th>
+                    <th className="px-4 py-3">Archived</th>
                     <th className="px-4 py-3">Why</th>
                     <th className="px-4 py-3 pr-5 text-right"><span className="sr-only">Actions</span></th>
                   </tr>
@@ -342,9 +299,9 @@ export function ChatsFolderPanel({
                   ) : rows.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-5 py-12 text-center">
-                        <p className="font-display text-[15px] font-semibold text-slate-700">{anyFilter ? "No matches" : cfg.emptyTitle}</p>
+                        <p className="font-display text-[15px] font-semibold text-slate-700">{anyFilter ? "No matches" : EMPTY_TITLE}</p>
                         <p className="mt-1 text-[13px] text-ink-muted">
-                          {anyFilter ? `No ${cfg.noun} chat matches these filters.` : cfg.emptyText}
+                          {anyFilter ? "No archived chat matches these filters." : EMPTY_TEXT}
                         </p>
                       </td>
                     </tr>
@@ -377,26 +334,17 @@ export function ChatsFolderPanel({
                             {lastAt && <p className="text-[12px] text-ink-muted">{formatConvoTime(lastAt)}</p>}
                           </td>
                           <td className="whitespace-nowrap px-4 py-3 align-middle text-[13px] text-ink-secondary">
-                            {mode === "archived" ? (
-                              <>
-                                {shortDate(l.archived_at)}
-                                {l.archived_reason === "idle_30d" || l.archived_reason === "order_delivered" ? (
-                                  <span className="text-ink-muted"> · by itself</span>
-                                ) : l.archived_by_name ? (
-                                  <span className="text-ink-muted"> · by {l.archived_by_name}</span>
-                                ) : null}
-                              </>
-                            ) : (
-                              <>
-                                {shortDate(l.blocked_at)}
-                                {l.blocked_by_name ? <span className="text-ink-muted"> · by {l.blocked_by_name}</span> : null}
-                              </>
-                            )}
+                            {shortDate(l.archived_at)}
+                            {l.archived_reason === "idle_30d" || l.archived_reason === "order_delivered" ? (
+                              <span className="text-ink-muted"> · by itself</span>
+                            ) : l.archived_by_name ? (
+                              <span className="text-ink-muted"> · by {l.archived_by_name}</span>
+                            ) : null}
                           </td>
                           <td className="max-w-[200px] px-4 py-3 align-middle">
-                            {(mode === "archived" ? archiveWhy(l) : l.blocked_reason) ? (
+                            {archiveWhy(l) ? (
                               <span className="inline-block max-w-full truncate rounded-full bg-slate-100 px-2.5 py-0.5 text-[12px] font-semibold text-slate-600">
-                                {mode === "archived" ? archiveWhy(l) : l.blocked_reason}
+                                {archiveWhy(l)}
                               </span>
                             ) : (
                               <span className="text-[12px] text-ink-muted">—</span>
@@ -407,10 +355,10 @@ export function ChatsFolderPanel({
                               type="button"
                               onClick={() => void putBack(l)}
                               disabled={!canReply || busyId === l.id}
-                              title={readOnly ?? cfg.actionTitle}
+                              title={readOnly ?? "Put this chat back in the Inbox"}
                               className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 font-label text-[13px] font-bold text-ink hover:border-ink-muted disabled:cursor-not-allowed disabled:opacity-45"
                             >
-                              {mode === "archived" && <Undo2 size={13} />} {cfg.actionLabel}
+                              <Undo2 size={13} /> Move back
                             </button>
                           </td>
                         </tr>
@@ -425,14 +373,14 @@ export function ChatsFolderPanel({
                 <p className="px-2 py-8 text-center text-sm text-ink-muted">Loading…</p>
               ) : rows.length === 0 ? (
                 <div className="px-2 py-8 text-center">
-                  <p className="font-display text-[15px] font-semibold text-slate-700">{anyFilter ? "No matches" : cfg.emptyTitle}</p>
+                  <p className="font-display text-[15px] font-semibold text-slate-700">{anyFilter ? "No matches" : EMPTY_TITLE}</p>
                   <p className="mt-1 text-[13px] text-ink-muted">
-                    {anyFilter ? `No ${cfg.noun} chat matches these filters.` : cfg.emptyText}
+                    {anyFilter ? "No archived chat matches these filters." : EMPTY_TEXT}
                   </p>
                 </div>
               ) : (
                 rows.map((l) => {
-                  const why = mode === "archived" ? archiveWhy(l) : l.blocked_reason;
+                  const why = archiveWhy(l);
                   return (
                     <MobileRecordCard key={l.id} className="p-3">
                       <div className="flex items-start gap-2">
@@ -457,31 +405,22 @@ export function ChatsFolderPanel({
                         </button>
                       </div>
                       <p className="mt-2 text-[13px] text-on-surface-muted">
-                        {mode === "archived" ? (
-                          <>
-                            Archived {shortDate(l.archived_at)}
-                            {l.archived_reason === "idle_30d" || l.archived_reason === "order_delivered"
-                              ? " · by itself"
-                              : l.archived_by_name
-                                ? ` · by ${l.archived_by_name}`
-                                : ""}
-                          </>
-                        ) : (
-                          <>
-                            Blocked {shortDate(l.blocked_at)}
-                            {l.blocked_by_name ? ` · by ${l.blocked_by_name}` : ""}
-                          </>
-                        )}
+                        Archived {shortDate(l.archived_at)}
+                        {l.archived_reason === "idle_30d" || l.archived_reason === "order_delivered"
+                          ? " · by itself"
+                          : l.archived_by_name
+                            ? ` · by ${l.archived_by_name}`
+                            : ""}
                         {why ? ` · ${why}` : ""}
                       </p>
                       <button
                         type="button"
                         onClick={() => void putBack(l)}
                         disabled={!canReply || busyId === l.id}
-                        title={readOnly ?? cfg.actionTitle}
+                        title={readOnly ?? "Put this chat back in the Inbox"}
                         className="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-surface px-3 font-label text-[13px] font-bold text-ink hover:border-ink-muted disabled:cursor-not-allowed disabled:opacity-45"
                       >
-                        {mode === "archived" && <Undo2 size={13} />} {cfg.actionLabel}
+                        <Undo2 size={13} /> Move back
                       </button>
                     </MobileRecordCard>
                   );
@@ -501,32 +440,26 @@ export function ChatsFolderPanel({
             )}
           </div>
 
-          {mode === "archived" ? (
-            <div className="flex items-start gap-2 rounded-xl border border-primary/15 bg-primary-light/50 px-4 py-3">
-              <Info size={14} className="mt-0.5 shrink-0 text-primary" />
-              <p className="text-[13px] leading-relaxed text-ink-secondary">
-                Chats move here by themselves after an order is delivered or 30 days with no reply, and go back to the
-                Inbox as soon as the customer writes again. They are never deleted: search still finds them, and the
-                customer page keeps the full history.
-              </p>
-            </div>
-          ) : (
-            <BlockedVsStop />
-          )}
+          <div className="flex items-start gap-2 rounded-xl border border-primary/15 bg-primary-light/50 px-4 py-3">
+            <Info size={14} className="mt-0.5 shrink-0 text-primary" />
+            <p className="text-[13px] leading-relaxed text-ink-secondary">
+              Chats move here by themselves after an order is delivered or 30 days with no reply, and go back to the
+              Inbox as soon as the customer writes again. They are never deleted: search still finds them, and the
+              customer page keeps the full history.
+            </p>
+          </div>
         </div>
-        {mode === "archived" && (
-          <aside className="flex min-w-0 flex-col gap-3">
-            <BlockedSide canReply={canReply} onSeeAll={onSeeBlocked} />
-            <BlockedVsStop />
-          </aside>
-        )}
+        <aside className="flex min-w-0 flex-col gap-3">
+          <BlockedSide canReply={canReply} canExport={canExport} />
+          <BlockedVsStop />
+        </aside>
         </div>
       </div>
     </div>
   );
 }
 
-/** Blocked is not the same as Said stop. Shown on Archived and Blocked. */
+/** Blocked is not the same as Said stop. Shown under the Blocked list. */
 function BlockedVsStop() {
   return (
     <div className="rounded-2xl border border-border/80 bg-surface px-5 py-4 shadow-card">
@@ -545,15 +478,20 @@ function BlockedVsStop() {
   );
 }
 
-/** The Blocked list beside Archived: the latest three, with Unblock, and a link to all of them. */
-function BlockedSide({ canReply, onSeeAll }: { canReply: boolean; onSeeAll?: () => void }) {
+const NO_FILTERS: ArchivedFilters = { q: "", channel: "", segment: "", within: "" };
+
+/** The Blocked list beside Archived: newest three, expandable in place to pages of 50, with Unblock. */
+function BlockedSide({ canReply, canExport }: { canReply: boolean; canExport: boolean }) {
   const [rows, setRows] = useState<Lead[] | null>(null);
   const [total, setTotal] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
-    fetchView("blocked", { q: "", channel: "", segment: "", within: "" }, 3, 0)
+    fetchView("blocked", NO_FILTERS, PAGE, 0)
       .then((page) => { if (live) { setRows(page.leads); setTotal(page.total); } })
       .catch(() => { if (live) setRows([]); });
     return () => { live = false; };
@@ -573,19 +511,65 @@ function BlockedSide({ canReply, onSeeAll }: { canReply: boolean; onSeeAll?: () 
     }
   }
 
+  async function loadMore() {
+    if (loadingMore || !rows) return;
+    setLoadingMore(true);
+    try {
+      const page = await fetchView("blocked", NO_FILTERS, PAGE, rows.length);
+      setRows((prev) => {
+        const seen = new Set((prev ?? []).map((x) => x.id));
+        return [...(prev ?? []), ...page.leads.filter((x) => !seen.has(x.id))];
+      });
+      setTotal(page.total);
+    } catch {
+      toast.error("Couldn't load more");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function download() {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      downloadCsv(`blocked-contacts-${today()}.csv`, await fetchAll("blocked", NO_FILTERS), BLOCKED_COLUMNS);
+      toast.success("Download ready");
+    } catch {
+      toast.error("Couldn't download. Try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const shown = rows === null ? [] : expanded ? rows : rows.slice(0, 3);
+  const hidden = Math.max(0, total - shown.length);
+
   return (
     <div className="rounded-2xl border border-border/80 bg-surface shadow-card">
-      <h3 className="flex items-baseline gap-2 border-b border-border/70 px-5 py-3 font-display text-[15px] font-bold text-ink">
-        <Ban size={14} className="self-center text-red-500" /> Blocked
-        <span className="font-body text-[13px] font-semibold text-ink-muted">{total.toLocaleString("en-IN")}</span>
-      </h3>
+      <div className="flex items-start gap-2 border-b border-border/70 px-5 py-3">
+        <Ban size={14} className="mt-1 shrink-0 text-red-500" />
+        <div className="min-w-0 flex-1">
+          <h3 className="font-display text-[15px] font-bold text-ink">Blocked · {total.toLocaleString("en-IN")}</h3>
+          <p className="text-[12px] text-ink-muted">no messages in or out, the AI agent stays quiet</p>
+        </div>
+        {canExport && total > 0 && (
+          <button
+            type="button"
+            onClick={() => void download()}
+            disabled={exporting}
+            className="inline-flex shrink-0 items-center gap-1 text-[12.5px] font-semibold text-primary hover:underline disabled:opacity-50"
+          >
+            {exporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Download
+          </button>
+        )}
+      </div>
       {rows === null ? (
         <p className="px-5 py-4 text-[13px] text-ink-muted">Loading…</p>
-      ) : rows.length === 0 ? (
+      ) : shown.length === 0 ? (
         <p className="px-5 py-4 text-[13px] text-ink-muted">No one is blocked. Block anyone from the ⋯ menu on their chat.</p>
       ) : (
-        <ul>
-          {rows.map((l) => (
+        <ul className={cn(expanded && "max-h-[60vh] overflow-y-auto")}>
+          {shown.map((l) => (
             <li key={l.id} className="flex items-center gap-3 border-b border-border-subtle/80 px-5 py-2.5 last:border-b-0">
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13px] font-bold text-ink">{displayName(l)}</p>
@@ -605,9 +589,24 @@ function BlockedSide({ canReply, onSeeAll }: { canReply: boolean; onSeeAll?: () 
           ))}
         </ul>
       )}
-      {onSeeAll && total > 0 && (
-        <button type="button" onClick={onSeeAll} className="w-full border-t border-border/70 px-5 py-2.5 text-left text-[12.5px] font-semibold text-primary hover:bg-primary-50/40">
-          {total > (rows?.length ?? 0) ? `+ ${total - (rows?.length ?? 0)} more · ` : ""}See all blocked ›
+      {expanded && hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => void loadMore()}
+          disabled={loadingMore}
+          className="w-full border-t border-border/70 px-5 py-2.5 text-left text-[12.5px] font-semibold text-primary hover:bg-primary-50/40 disabled:opacity-50"
+        >
+          {loadingMore ? "Loading…" : `Load more (${shown.length} of ${total})`}
+        </button>
+      )}
+      {!expanded && hidden > 0 && (
+        <button type="button" onClick={() => setExpanded(true)} className="w-full border-t border-border/70 px-5 py-2.5 text-left text-[12.5px] font-semibold text-primary hover:bg-primary-50/40">
+          + {hidden.toLocaleString("en-IN")} more
+        </button>
+      )}
+      {expanded && (
+        <button type="button" onClick={() => setExpanded(false)} className="w-full border-t border-border/70 px-5 py-2.5 text-left text-[12.5px] font-semibold text-primary hover:bg-primary-50/40">
+          Show fewer
         </button>
       )}
     </div>

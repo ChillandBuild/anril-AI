@@ -12,6 +12,7 @@ import LeadDetailPanel from "./components/LeadDetailPanel";
 import ManualDialPanel from "./components/ManualDialPanel";
 import RecentCallsTab from "./components/RecentCallsTab";
 import type { CallingCockpit } from "./lib/useCallingCockpit";
+import type { DialCheckState } from "./lib/dialCheck";
 import type { CallbackJob } from "./types";
 
 type Status = "active" | "break" | "logged_out";
@@ -20,6 +21,8 @@ type Group = "queue" | "scheduled" | "done" | "dialer" | "recent";
 interface Props {
   cockpit: CallingCockpit;
   callerId: string | null;
+  dialCheck: DialCheckState;
+  myName: string | null;
   readOnly: boolean;
   myStatus: Status;
   onStatusChange: (s: Status) => void;
@@ -63,7 +66,7 @@ function leadLine(lead: Lead, called: string | undefined, cb: CallbackJob | unde
 }
 
 export default function PhoneCallerView({
-  cockpit, callerId, readOnly, myStatus, onStatusChange, queueLoading,
+  cockpit, callerId, dialCheck, myName, readOnly, myStatus, onStatusChange, queueLoading,
   queueLeads, scheduledLeads, doneLeads, allLeads, lastCalledMap,
   searchQuery, onSearchChange, setHistoryLead, onExportCsv, exporting,
 }: Props) {
@@ -313,7 +316,7 @@ export default function PhoneCallerView({
 
       {group === "dialer" ? (
         <div className="min-w-0 rounded-2xl border border-border bg-white p-3">
-          <ManualDialPanel cockpit={cockpit} readOnly={readOnly} />
+          <ManualDialPanel cockpit={cockpit} readOnly={readOnly} dialCheck={dialCheck} yourName={myName} />
         </div>
       ) : group === "recent" ? (
         <div className="min-w-0 rounded-2xl border border-border bg-white p-3">
