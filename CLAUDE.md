@@ -50,6 +50,7 @@
 - Weekly → a short retro: what shipped, what broke.
 - A push to `main` auto-deploys the backend on Render. Push or deploy only when the user says so, every time;
   `superpowers:verification-before-completion` is the go/no-go check, not permission to push.
+  After a push, don't check or wait for the Render deploy to go live; only when the user asks.
 
 ## Agent Routing Instructions
 Read ONLY the file your task's scope points to:

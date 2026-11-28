@@ -2539,3 +2539,10 @@ Moved by the second-brain audit so the active backlog lists only open work. Text
 - **Known limits:** a proxy set in the environment (`HTTPS_PROXY`) would leave auth and storage on HTTP/2 through the proxy mount;
   a write that times out (not cut) is still not resent; non-audit writes are not replayed at all.
 - **Rule:** never share one sync HTTP/2 httpx client across threads. A new sync client used by threads gets `http2=False`.
+
+## 2026-11-28 — AstroTamil 27 Nov corrections 4, 5, 6, 8: name once, dasa with bhukti, 7-day app data log (migration 351)
+- **Why:** AstroTamil's test chat (Manjari, 27 answers) opened 17 replies with her name, put the dasa end date in 15 and named the dasa alone in 8; they also asked to see what the AI received.
+- **What:** WHO lines say "first reply only; after that, rarely" (shared code). Jothidar rules 17/19/20/38 reworded and rule 40 added, samples 2/3/9 rewritten, live in the DB (backup `jothidar-rules-backup-2026-11-28.json`). New `companion_app_data_log` with a nightly 7-day prune.
+- **Measured:** names after the first reply 22/26 → 1–7/26; stray end dates 3/17 → 0–1/17. **Timing-first did not move** (3/10 → 2–3/10 over three wordings): left for a code-side step, AstroTamil to be told.
+- **Migration 351** `351_companion_app_data_log.sql`: one new table, RLS on with no policies, rows cascade from `companion_messages`, `companion_end_users`, `companions`. Undo in `undo/351_…`. Applied live 2026-11-28 via Supabase MCP, before the code.
+

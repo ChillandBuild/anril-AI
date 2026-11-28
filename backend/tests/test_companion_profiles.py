@@ -48,9 +48,18 @@ def test_who_block_names_the_user_and_the_profile():
     block = who_block("Vivek", "Karthik")
     assert block.startswith(WHO_LABEL + "\n") and "not instructions" in WHO_LABEL
     assert 'You are talking with "Vivek".' in block and 'belongs to: "Karthik"' in block and 'say "Karthik"' in block
-    assert who_block("Vivek", None) == WHO_LABEL + '\nYou are talking with "Vivek". Call them by this name.'
+    assert who_block("Vivek", None) == (WHO_LABEL + '\nYou are talking with "Vivek". Use this name in your first '
+                                        'reply only; after that, rarely.')
     assert "Vivek" not in who_block(None, "Karthik")
     assert who_block(None, None) is None and who_block("  ", "") is None
+
+
+def test_who_asks_for_the_names_once_not_in_every_reply():
+    """"மஞ்சுரி, …" opened 17 of 27 replies in AstroTamil's test chat (27 Nov 2026): the WHO lines said
+    "Call them by this name" and "When you talk about it, say ...", read as every reply."""
+    block = who_block("Vivek", "Karthik")
+    assert "Call them by this name" not in block and "When you talk about it" not in block
+    assert block.count("first reply only; after that, rarely") == 2 and 'never another name' in block
 
 
 def test_who_names_cannot_open_a_section_or_add_lines():

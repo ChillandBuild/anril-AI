@@ -718,6 +718,20 @@ async def save_reply_trace(row: dict) -> None:
     await asyncio.to_thread(_q)
 
 
+async def save_app_data_log(row: dict) -> None:
+    """The app data (birth details removed) one live reply was given (app_data_log.py, migration 351)."""
+    def _q():
+        get_supabase().table("companion_app_data_log").insert(row).execute()
+    await asyncio.to_thread(_q)
+
+
+async def prune_app_data_log(cutoff_iso: str) -> None:
+    """Deletes the app data log rows created before cutoff_iso (all businesses: a 7-day keep rule)."""
+    def _q():
+        get_supabase().table("companion_app_data_log").delete().lt("created_at", cutoff_iso).execute()
+    await asyncio.to_thread(_q)
+
+
 FEEDBACK_RATINGS = {"up": 1, "down": -1}
 QUALITY_DOWN_PAGE = 50       # newest thumbs-down replies listed with their trace
 

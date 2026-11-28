@@ -29,6 +29,7 @@ RETRY_CLASS: dict[str, str] = {
     "send-log-prune": "B",
     "password-help-prune": "B",
     "scheduler-runs-prune": "B",
+    "companion-app-data-prune": "B",
     "private-send-meta-reconcile": "B",
     "auto-archive-idle": "B",
     "crm-cutoff-sweep": "A",
@@ -256,6 +257,14 @@ def password_help_prune(timestamp: int) -> None:
 async def scheduler_runs_prune(timestamp: int) -> None:
     from app import main
     await main._prune_scheduler_runs()
+
+
+@queue_app.periodic(cron="50 21 * * *", periodic_id="companion-app-data-prune")  # 03:20 IST
+@queue_app.task(name="companion-app-data-prune", queue="maintenance")
+async def companion_app_data_prune(timestamp: int) -> None:
+    """The app data each live reply was given is kept 7 days (companion_app_data_log, migration 351)."""
+    from app.companion.app_data_log import prune
+    await prune()
 
 
 @queue_app.periodic(cron="30 22 * * *", periodic_id="auto-archive-idle")  # 04:00 IST

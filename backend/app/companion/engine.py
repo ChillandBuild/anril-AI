@@ -26,8 +26,8 @@ import time
 import weakref
 from datetime import datetime, timedelta, timezone
 
-from app.companion import (chart_check, chip_repeats, memory_card, memory_refresh, memory_search, playground, store, trace,
-                           tools as app_tools)
+from app.companion import (app_data_log, chart_check, chip_repeats, memory_card, memory_refresh, memory_search,
+                           playground, store, trace, tools as app_tools)
 from app.companion.birth_guard import strip_app_data, strip_birth_text
 from app.companion.memory import forget_providers, provider_for
 from app.companion.models import AppTool, CompanionReply, ToolResult
@@ -602,7 +602,7 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
     """One LLM round. Either pauses for app tools (status tool_call) or finishes the reply.
     kb: the passages in the prompt. It rides along (and into a paused turn's state) so the finished
     reply can be checked against what was really supplied. reply_format rides along the same way, and
-    app_data too (for the chart guard; kept only when the guard is on, birth details already removed)."""
+    app_data too (for the chart guard and the 7-day app data log; birth details already removed)."""
     companion_id = companion["id"]
     trace.note(rounds=round_no)
     use_tools = bool(tools) and round_no < MAX_ROUNDS
@@ -640,7 +640,7 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
         if reply_format is not None:
             state["reply_format"] = reply_format.model_dump()
             state["asked"] = reply_format.asked   # not in the dump: the questions are never the request's
-        if app_data and companion.get("chart_guard"):
+        if app_data:   # the chart guard (when on) and the app data log read it after the tools
             state["app_data"] = strip_app_data(app_data)
         if companion.get("reply_language"):   # the sorry and handoff lines after the tools speak it too
             state["reply_language"] = companion["reply_language"]
@@ -655,7 +655,7 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
     raw, chart_failed = await _chart_guard(companion, tenant_id, prompt, raw, app_data, kb,
                                            _mood(conversation, companion), model, reply_format)
     return await _finish(companion, tenant_id, conversation, user_message, raw, tool_log, started, llm_ms, kb,
-                         reply_format, chart_failed)
+                         reply_format, chart_failed, app_data=app_data)
 
 
 async def _chart_guard(companion: dict, tenant_id: str, prompt: list[dict], raw: str | None,
@@ -790,7 +790,9 @@ def _shown_basis(basis: str | None, companion: dict) -> str | None:
 
 async def _finish(companion: dict, tenant_id: str, conversation: dict, user_message: str, raw: str | None,
                   tool_log: list[dict], started: float, llm_ms: int, kb: KbResult | None = None,
-                  reply_format: ReplyFormat | None = None, chart_failed: bool = False) -> CompanionReply:
+                  reply_format: ReplyFormat | None = None, chart_failed: bool = False,
+                  app_data: str | None = None) -> CompanionReply:
+    """app_data: what the app sent with this message; a live reply keeps it 7 days (app_data_log.py)."""
     companion_id = companion["id"]
     text, mood, basis, sources = _read_reply(raw, _mood(conversation, companion), kb, companion,
                                              reply_format, chart_failed)
@@ -830,6 +832,7 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
         trace.note(tool_calls=len(tool_log))
         trace.schedule(tenant_id, companion_id, saved["id"], basis=_logged_basis(basis, shape, reply_format),
                        model=character_model(companion), llm_ms=llm_ms, total_ms=total_ms)
+        app_data_log.schedule(tenant_id, companion_id, conversation["end_user_id"], saved["id"], app_data)
     return CompanionReply(
         status="done", text=text, mood=mood, conversation_id=conversation["id"], message_id=saved["id"],
         basis=shown, sources=[{k: s[k] for k in ("document", "page_from", "page_to")} for s in sources], **shape,
