@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -245,6 +246,75 @@ def check_stale_claims():
     return issues
 
 
+# A log section larger than this costs too much context to read as one slice. Measured
+# 2026-11-28: after the heading repair the largest real section was 15,933 chars; before
+# it, one heading had swallowed three months of entries and reached 193,869.
+LOG_SECTION_MAX_CHARS = 20_000
+
+_INDEX_HEADING = "## DB Migrations Index"
+_INDEX_ROW = re.compile(r"^\| \*\*(\d{3})\*\* \|")
+
+
+def migration_index_gap(log_text, migration_numbers):
+    """Issue if a committed migration has no row in the index table in log.md.
+    Only rows inside the index section count — dated entries further down can hold
+    tables of their own. `migration_numbers` is every 3-digit prefix of a committed file."""
+    lines = log_text.split("\n")
+    start = next((i for i, x in enumerate(lines) if x.startswith(_INDEX_HEADING)), None)
+    if start is None:
+        return [f"decisions/log.md: no '{_INDEX_HEADING}' section — CLAUDE.md points agents at it"]
+    indexed = Counter()
+    for line in lines[start + 1:]:
+        if line.startswith("## "):
+            break
+        m = _INDEX_ROW.match(line)
+        if m:
+            indexed[int(m.group(1))] += 1
+    # One row per file, so compare counts: two files can share a number, and a lower
+    # number can land after a higher one. Numbers below the table's first row belong
+    # to the separate historical index.
+    first, last = min(indexed, default=0), max(indexed, default=0)
+    missing = Counter(n for n in migration_numbers if n >= first) - indexed
+    if missing:
+        return [
+            f"decisions/log.md: migration index (rows {first}–{last}) is missing {sum(missing.values())} "
+            f"committed file(s): {', '.join(map(str, sorted(missing)[:10]))} — regenerate the table "
+            "from `git ls-files backend/supabase/migrations`"
+        ]
+    return []
+
+
+def oversized_sections(text, limit=LOG_SECTION_MAX_CHARS):
+    """One issue per '## ' section of `text` that is longer than `limit` characters.
+    A section runs from its '## ' heading line up to (not including) the next '## ' line."""
+    sections = []  # [heading text, char count]; text before the first heading is not a section
+    for line in text.split("\n"):
+        if line.startswith("## "):
+            sections.append([line[3:].strip(), 0])
+        if sections:
+            sections[-1][1] += len(line) + 1
+    return [
+        f"decisions/log.md: section '{heading[:70]}' is {size:,} chars (limit {limit:,}) — "
+        "split it under more '## ' headings (one per dated entry, or one per month for a list)"
+        for heading, size in sections
+        if size > limit
+    ]
+
+
+def check_log_health():
+    """decisions/log.md stays cheap to search: no giant sections, migration index current."""
+    log = ROOT / ".agents" / "decisions" / "log.md"
+    if not log.is_file():
+        return []
+    text = log.read_text(errors="ignore")
+    numbers = [
+        int(m.group(1))
+        for m in re.finditer(r"^backend/supabase/migrations/(\d{3})_[^/]+\.sql$",
+                             run(["git", "ls-files", "backend/supabase/migrations"]), re.M)
+    ]
+    return oversized_sections(text) + migration_index_gap(text, numbers)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--write-report", action="store_true")
@@ -256,6 +326,7 @@ def main():
         "Git hook liveness": check_hook_liveness(),
         "Credential patterns (recent changes)": check_credential_patterns(),
         "Stale claims in .agents/": check_stale_claims(),
+        "Decision log health": check_log_health(),
     }
 
     total = sum(len(v) for v in sections.values())
