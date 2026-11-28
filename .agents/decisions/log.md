@@ -2504,3 +2504,38 @@ Moved by the second-brain audit so the active backlog lists only open work. Text
 - **Lookup rule now finds the smallest heading block** around a hit with one `awk` line (CLAUDE.md and AGENTS.md), because the
   old heading list only matched `## ` and hid sub-headings; past sessions guessed line ranges (7,169 chars per read, 40 of 52 crossed a section).
 - **Guard:** `second_brain_close.py` warns when a `##`/`###` block in `subsystem-notes.md` passes 8,000 chars.
+
+## 2026-11-28 — "Server disconnected" root cause: threads shared one HTTP/2 connection; Supabase clients moved to HTTP/1.1 pools (`e5333560`)
+
+- **Trigger:** the Claude connector answered "The audit log could not be written, so the answer was withheld" for kelirsm's
+  `leads_overview` (2026-11-27 18:26:25 UTC). The audit row had in fact been saved: the insert landed and the connection
+  died before the reply came back.
+- **Scale:** about 205 connection cuts in 10.4 h on 2026-11-27 (~20 an hour, ~39 an hour when busy). Each cut killed every
+  request in flight: reads were retried, writes (message status, lead score, reply routing, a re-engagement send) just failed.
+- **Root cause:** supabase-py puts each client on ONE HTTP/2 connection, and every thread in the process uses it. httpcore's
+  **sync** HTTP/2 connection (1.0.9, `_sync/http2.py`) takes the next stream id and packs headers with no lock. Two threads
+  collide, Supabase's edge (Cloudflare) answers GOAWAY PROTOCOL_ERROR or hangs up, and every stream gets
+  `RemoteProtocolError: Server disconnected`. The async version is safe: one thread cannot be interrupted between the two steps.
+- **Evidence in the live logs:** `StreamIDTooLowError: 287 is lower than 287`, `Received pseudo-header in trailer`,
+  `<ConnectionTerminated error_code:1 ...>`. Afternoon cuts lined up with 5-minute marks because that is when the scheduler
+  starts several threads at once, not because the connection was idle.
+- **Reproduced** (Mac, same client settings, no key, every answer a 401): HTTP/2 one thread sequential 0 / 1,300;
+  HTTP/2 one thread with 8 in flight (asyncio) 0 / 6,400; **HTTP/2 with 8 threads 61 / 5,600**; **HTTP/1.1 pool with 8 threads 0 / 3,200**.
+- **Ruled out:** an edge idle timeout (idle 2 s to 300 s all fine), a request-count limit (1,300 on one connection fine),
+  the app recreating its client (one `create_client`, never reset).
+- **Fix (`backend/app/db/supabase.py`):** `_wrap_postgrest_session` builds the DB session with `http2=False`; new `_use_http1()`
+  swaps the transport of the auth and storage clients in place (auth and auth.admin share one httpx client). `get_supabase()`
+  publishes the client only after the swap. The GET retry transport stays.
+- **Fix (`backend/app/services/audit_log.py`):** `write_audit_event` picks the row id itself; a write cut off by a dropped
+  connection is resent up to 2 times as `upsert(on_conflict="id", ignore_duplicates=True)`, so it cannot write twice.
+- **Tests:** `test_supabase_retry.py::test_no_supabase_client_shares_an_http2_connection` fails if any of the four sessions
+  is HTTP/2 again (CI installs the newest supabase-py, so it also catches a library that moves the internals);
+  `test_audit_log_retry.py` (4 tests). Full suite 10,017 passed.
+- **Live result:** deployed 06:43:56 UTC. The 30 min before: 21 cuts (53 dropped-read lines). The 24 min after: 0 cuts,
+  0 `Server disconnected`, 0 error-level lines, with the dashboard polls running. A full day is not measured yet.
+- **This replaces the "transient disconnect" reading** in the 2026-07/08 entries above (`_execute_with_retry` in `operator.py`,
+  `_verify_remote`, `handover_count`, `get_setting`, the read-only analytics RPC allowlist). Those patches are still in the
+  code and harmless; do not add a sixth. If `Server disconnected` shows up again, check first that a client is not back on HTTP/2.
+- **Known limits:** a proxy set in the environment (`HTTPS_PROXY`) would leave auth and storage on HTTP/2 through the proxy mount;
+  a write that times out (not cut) is still not resent; non-audit writes are not replayed at all.
+- **Rule:** never share one sync HTTP/2 httpx client across threads. A new sync client used by threads gets `http2=False`.
