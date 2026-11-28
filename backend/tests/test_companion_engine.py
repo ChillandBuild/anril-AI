@@ -610,3 +610,100 @@ def test_reply_format_works_on_the_compare_reply_without_memory(env):
     env.state["replies"] = [SHAPED]
     r = asyncio.run(engine._reply_without_memory(companion, "t1", "Guru?", None, None, None, reply_format=FMT))
     assert r.tag == "counted" and r.text == "Guru 7th house la irukku.\n\nKalyanam yogam varum."
+
+
+# --- chips never repeat a question already asked (28 Nov 2026, chip_repeats.py) ------------------------
+
+def _this_week(monkeypatch):
+    """The fake stamps every saved row 2026-01-01: count from just before, as if that were this week."""
+    monkeypatch.setattr(engine, "_asked_since", lambda: "2025-12-31T00:00:00")
+
+
+# "eppo vaangalam sontha veedu" has the same words as "Sontha veedu eppo vaangalam": the fake embedding
+# (conftest.fake_embedding, a bag of words) makes them 1.0 alike, a near copy in other words
+VEEDU_AGAIN = ("[mood: calm] [used: 1] [tag: counted]\nVelai 2027 la.\n"
+               "[chips: eppo vaangalam sontha veedu | Love-a arranged-a? | Dasa eppadi?]")
+
+
+def test_no_chip_repeats_a_question_from_earlier_this_week(env, monkeypatch):
+    _this_week(monkeypatch)
+    env.state["replies"] = ["[mood: calm] [used: 1] [tag: counted]\nVeedu 2028.\n[chips: none]", VEEDU_AGAIN]
+    reply(env.jothidar["id"], "Sontha veedu eppo vaangalam", reply_format=FMT)
+    r = reply(env.jothidar["id"], "Velai kidaikuma?", reply_format=FMT)
+    assert r.chips == ["Love-a arranged-a?", "Dasa eppadi?"]
+
+
+def test_the_newest_message_is_checked_too(env):
+    env.state["replies"] = [VEEDU_AGAIN]
+    r = reply(env.jothidar["id"], "Sontha veedu eppo vaangalam", reply_format=FMT)
+    assert r.chips == ["Love-a arranged-a?", "Dasa eppadi?"]
+
+
+def test_a_question_older_than_seven_days_or_from_another_person_does_not_count(env, monkeypatch):
+    _this_week(monkeypatch)
+    me = asyncio.run(store.find_or_create_end_user("t1", "48213"))
+    other = asyncio.run(store.find_or_create_end_user("t1", "99999"))
+    for person, at in ((me, "2025-12-01T00:00:00"), (other, "2026-01-01T00:00:05")):
+        env.db.add("companion_messages", tenant_id="t1", companion_id=env.jothidar["id"], conversation_id="c0",
+                   end_user_id=person["id"], role="user", content="Sontha veedu eppo vaangalam", created_at=at)
+    env.state["replies"] = [VEEDU_AGAIN]
+    r = reply(env.jothidar["id"], "Velai kidaikuma?", reply_format=FMT)
+    assert r.chips == ["eppo vaangalam sontha veedu", "Love-a arranged-a?"]
+
+
+def test_a_failed_read_of_the_past_questions_costs_them_never_the_reply(env, monkeypatch):
+    async def broken(*a, **kw):
+        raise RuntimeError("db down")
+    monkeypatch.setattr(store, "asked_questions", broken)
+    env.state["replies"] = [VEEDU_AGAIN]
+    r = reply(env.jothidar["id"], "Velai kidaikuma?", reply_format=FMT)
+    assert r.status == "done" and r.chips == ["eppo vaangalam sontha veedu", "Love-a arranged-a?"]
+
+
+def test_without_chips_to_show_the_past_questions_are_not_read(env, monkeypatch):
+    async def never(*a, **kw):
+        raise AssertionError("read although no chips can show")
+    monkeypatch.setattr(store, "asked_questions", never)
+    env.state["replies"] = [VEEDU_AGAIN, VEEDU_AGAIN]
+    assert reply(env.jothidar["id"], "Velai kidaikuma?").chips is None
+    no_more = ReplyFormat(questions_left=0)
+    assert reply(env.jothidar["id"], "Velai kidaikuma?", reply_format=no_more).chips == []
+
+
+def test_a_birth_detail_in_a_past_question_is_never_embedded(env, monkeypatch):
+    _this_week(monkeypatch)
+    me = asyncio.run(store.find_or_create_end_user("t1", "48213"))
+    env.db.add("companion_messages", tenant_id="t1", companion_id=env.jothidar["id"], conversation_id="c0",
+               end_user_id=me["id"], role="user", content="Born 12/03/1994 at 5:40 am, kalyanam eppo?",
+               created_at="2026-01-01T00:00:01")
+    from app.companion import memory_embed
+    embedded = []
+
+    async def embed(texts, kind, tenant_id, model=None, retries=True):
+        embedded.extend(texts)
+        return [[1.0] + [0.0] * 767 for _ in texts]
+    monkeypatch.setattr(memory_embed, "embed", embed)
+    env.state["replies"] = [VEEDU_AGAIN]
+    reply(env.jothidar["id"], "Velai kidaikuma?", reply_format=FMT)
+    assert any("kalyanam eppo" in t for t in embedded)            # the question itself is checked
+    assert not any("1994" in t or "5:40" in t for t in embedded)
+
+
+def test_a_chart_pasted_in_an_older_message_is_never_embedded(env, monkeypatch):
+    """Review, 28 Nov 2026: the past questions are joined into one line and cut, which hid a pasted chart
+    from hide_pasted_chart (it counts chart lines). They are cleaned whole now, before that."""
+    _this_week(monkeypatch)
+    me = asyncio.run(store.find_or_create_end_user("t1", "48213"))
+    chart = "Lagnam: Mesham\nRasi: Kanni\nNatchathiram: Hastham\nSun in Leo\nMoon in Kanni\nkalyanam eppo?"
+    env.db.add("companion_messages", tenant_id="t1", companion_id=env.jothidar["id"], conversation_id="c0",
+               end_user_id=me["id"], role="user", content=chart, created_at="2026-01-01T00:00:01")
+    from app.companion import memory_embed
+    embedded = []
+
+    async def embed(texts, kind, tenant_id, model=None, retries=True):
+        embedded.extend(texts)
+        return [[1.0] + [0.0] * 767 for _ in texts]
+    monkeypatch.setattr(memory_embed, "embed", embed)
+    env.state["replies"] = [VEEDU_AGAIN]
+    reply(env.jothidar["id"], "Velai kidaikuma?", reply_format=FMT)
+    assert embedded and not any("Mesham" in t or "Hastham" in t for t in embedded)

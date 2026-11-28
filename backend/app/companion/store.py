@@ -239,6 +239,22 @@ async def recent_messages(tenant_id: str, companion_id: str, end_user_id: str, l
     return list(reversed(rows))
 
 
+async def asked_questions(tenant_id: str, companion_id: str, end_user_id: str, *, since: str, limit: int,
+                          after: str | None = None) -> list[str]:
+    """What this person asked this character after `since` (their own messages, secrets already hidden), the
+    newest `limit`, oldest first: the questions a follow-up chip must not repeat (chip_repeats.py).
+    Example: ["kalyanam eppo", "Velai kidaikuma?"]. `after`: as in recent_messages."""
+    def _q():
+        q = (get_supabase().table("companion_messages").select("content, created_at")
+             .eq("tenant_id", tenant_id).eq("companion_id", companion_id).eq("end_user_id", end_user_id)
+             .eq("role", "user").gt("created_at", since))
+        if after:
+            q = q.gt("created_at", after)
+        return q.order("created_at", desc=True).limit(limit).execute().data
+    rows = await asyncio.to_thread(_q) or []
+    return [r["content"] for r in reversed(rows) if r.get("content")]
+
+
 CHAT_SHOWN = 50   # Playground: how many saved messages come back on screen when the page opens
 
 

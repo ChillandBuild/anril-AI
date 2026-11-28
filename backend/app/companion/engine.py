@@ -24,19 +24,20 @@ import logging
 import os
 import time
 import weakref
+from datetime import datetime, timedelta, timezone
 
-from app.companion import (chart_check, memory_card, memory_refresh, memory_search, playground, store, trace,
+from app.companion import (chart_check, chip_repeats, memory_card, memory_refresh, memory_search, playground, store, trace,
                            tools as app_tools)
-from app.companion.birth_guard import strip_app_data
+from app.companion.birth_guard import strip_app_data, strip_birth_text
 from app.companion.memory import forget_providers, provider_for
 from app.companion.models import AppTool, CompanionReply, ToolResult
 from app.companion.kb import learning as kb_learning
 from app.companion.kb import rewrite as kb_rewrite
 from app.companion.kb import search as kb_search
 from app.companion.kb.types import KbResult
-from app.companion.prompt import (build_messages, label_reply, parse_mood, parse_used, said_talk, split_working,
-                                  who_block, with_reply_language)
-from app.companion.reply_format import ReplyFormat, finalize, read_format, strip_tags
+from app.companion.prompt import (build_messages, hide_pasted_chart, label_reply, parse_mood, parse_used, said_talk,
+                                  split_working, who_block, with_reply_language)
+from app.companion.reply_format import ASKED_DAYS, ASKED_MAX, ReplyFormat, finalize, read_format, strip_tags
 from app.services import ai_reply
 
 logger = logging.getLogger(__name__)
@@ -316,7 +317,8 @@ async def continue_reply(turn_id: str, tenant_id: str, results: list[ToolResult]
             companion, provider, tenant_id, conversation, state["user_message"],
             state["prompt"] + extra, tools, int(turn["round"]) + 1, state.get("tool_log", []) + log,
             time.monotonic(), model=model, kb=KbResult.from_json(state.get("kb")),
-            reply_format=ReplyFormat(**state["reply_format"]) if state.get("reply_format") else None,
+            reply_format=(ReplyFormat(**state["reply_format"]).with_asked(state.get("asked") or [])
+                          if state.get("reply_format") else None),
             app_data=state.get("app_data"),
         )
     finally:
@@ -376,6 +378,7 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
     mood = companion.get("default_mood") or "calm"
     prompt = build_messages(companion, mood, kb, "", [], message, app_data=app_data, who=who,
                             reply_format=reply_format)
+    _prefetch_asked(tenant_id, reply_format, message)
     raw = None
     try:
         raw = await _chat(companion, tenant_id, prompt, model, kb)
@@ -384,7 +387,7 @@ async def _reply_without_memory(companion: dict, tenant_id: str, message: str,
         playground.problem(ai_reply.describe_llm_error(exc))
     raw, chart_failed = await _chart_guard(companion, tenant_id, prompt, raw, app_data, kb, mood, model, reply_format)
     text, new_mood, basis, sources = _read_reply(raw, mood, kb, companion, reply_format, chart_failed)
-    text, shape = _shape(text, raw, basis, kb, companion, reply_format, message)
+    text, shape = await _shaped(tenant_id, text, raw, basis, kb, companion, reply_format, message)
     logger.info("companion %s: reply without memory done (total %dms)", companion["id"],
                 int((time.monotonic() - started) * 1000))
     return CompanionReply(status="done", text=text, mood=new_mood, basis=_shown_basis(basis, companion),
@@ -405,11 +408,15 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
     # History is read before this message is saved, so the prompt doesn't carry it twice. It is read
     # first because the book search needs it: "and what about Rahu?" only makes sense with the turn before.
     # The conversation and the history need only the person, not each other, so they are read together.
-    conversation, history = await asyncio.gather(
+    # The questions this person asked this week come along too, so no chip repeats one (chip_repeats.py);
+    # their meaning is looked up while the model writes.
+    conversation, history, reply_format = await asyncio.gather(
         store.open_conversation(tenant_id, companion_id, person["id"], companion.get("default_mood") or "calm"),
         store.recent_messages(tenant_id, companion_id, person["id"],
                               limit=companion.get("history_messages") or HISTORY_LIMIT,
-                              after=person.get("chat_read_after")))
+                              after=person.get("chat_read_after")),
+        _with_asked(reply_format, tenant_id, companion_id, person))
+    _prefetch_asked(tenant_id, reply_format, message)
     ov = playground.current()   # None on the live path
     agentic = ov is not None and ov.mode == "agentic"
     with_kb = ov is None or (not agentic and ov.sources != "memories")
@@ -437,6 +444,57 @@ async def _reply(companion: dict, provider: str, tenant_id: str, external_user_i
                kb_small_talk=is_small_talk(kb), shortcut_hit=bool(kb and kb.shortcut_hit))
     return await _run_rounds(companion, provider, tenant_id, conversation, message, prompt, tools, 1, [], started,
                              model=model, kb=kb, reply_format=reply_format, app_data=app_data)
+
+
+def _asked_since() -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=ASKED_DAYS)).isoformat()
+
+
+def _wants_chips(fmt: ReplyFormat | None) -> bool:
+    return fmt is not None and fmt.questions_left != 0
+
+
+async def _with_asked(fmt: ReplyFormat | None, tenant_id: str, companion_id: str,
+                      person: dict) -> ReplyFormat | None:
+    """fmt carrying what this person asked this character in the last ASKED_DAYS days, so no chip repeats
+    it. Unchanged when no chips can show. A failed read costs the older questions, never the reply: the
+    newest message is still checked."""
+    if not _wants_chips(fmt):
+        return fmt
+    try:
+        questions = await store.asked_questions(tenant_id, companion_id, person["id"], since=_asked_since(),
+                                                limit=ASKED_MAX, after=person.get("chat_read_after"))
+    except Exception as exc:
+        logger.warning("companion %s: asked-questions read failed (%s)", companion_id, type(exc).__name__)
+        questions = []
+    return fmt.with_asked([_clean(q) for q in questions])   # cleaned whole: with_asked joins lines and cuts
+
+
+def _clean(text: str) -> str:
+    """No birth details and no pasted chart: a question is embedded, so it gets the prompt's own cleaning.
+    Run on the whole message, before its lines are joined (hide_pasted_chart counts chart lines)."""
+    return strip_birth_text(hide_pasted_chart(text)) or ""
+
+
+def _asked_texts(fmt: ReplyFormat, message: str) -> list[str]:
+    """The person's questions as they are checked against chips: the past ones (cleaned in _with_asked)
+    and the newest message, cleaned and cut like them."""
+    newest = fmt.with_asked([_clean(message)]).asked
+    return fmt.asked + newest
+
+
+def _prefetch_asked(tenant_id: str, fmt: ReplyFormat | None, message: str) -> None:
+    if _wants_chips(fmt):
+        chip_repeats.prefetch(tenant_id, _asked_texts(fmt, message))
+
+
+async def _shaped(tenant_id: str, text: str, raw: str | None, basis: str | None, kb: KbResult | None,
+                  companion: dict, fmt: ReplyFormat | None, question: str) -> tuple[str, dict]:
+    """_shape, then the chips the person may see: the first pair of ideas that repeat nothing they asked."""
+    text, shape = _shape(text, raw, basis, kb, companion, fmt, question)
+    if shape.get("chips"):
+        shape["chips"] = await chip_repeats.fresh(tenant_id, shape["chips"], _asked_texts(fmt, question))
+    return text, shape
 
 
 async def _no_kb() -> None:
@@ -581,6 +639,7 @@ async def _run_rounds(companion: dict, provider: str, tenant_id: str, conversati
             state["kb"] = kb.to_json()
         if reply_format is not None:
             state["reply_format"] = reply_format.model_dump()
+            state["asked"] = reply_format.asked   # not in the dump: the questions are never the request's
         if app_data and companion.get("chart_guard"):
             state["app_data"] = strip_app_data(app_data)
         if companion.get("reply_language"):   # the sorry and handoff lines after the tools speak it too
@@ -735,7 +794,7 @@ async def _finish(companion: dict, tenant_id: str, conversation: dict, user_mess
     companion_id = companion["id"]
     text, mood, basis, sources = _read_reply(raw, _mood(conversation, companion), kb, companion,
                                              reply_format, chart_failed)
-    text, shape = _shape(text, raw, basis, kb, companion, reply_format, user_message)
+    text, shape = await _shaped(tenant_id, text, raw, basis, kb, companion, reply_format, user_message)
     if not _has_text(raw, with_format=reply_format is not None):
         # The AI call failed (or came back empty): the person gets the sorry line, and nothing is saved,
         # so it isn't counted toward the memory step and isn't read back as something the character said.

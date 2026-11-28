@@ -278,3 +278,16 @@ def test_one_old_spec_passes_no_reply_format_and_adds_no_format_keys(monkeypatch
     row = _call_one({"tenant_id": "t", "app_data": ""}, {"id": "s", "text": "hi", "small_talk": True})
     assert "reply_format" not in seen and "format_marks" not in row and "bubbles" not in row
     assert "no_prediction" in row["marks"]
+
+
+# --- scripts/eval_chips.py: the repeat-chip eval's own code (no AI) --------------------------------
+
+def test_eval_chips_builds_25_cases_and_reads_the_graders_marks():
+    from scripts import eval_chips
+    cases = eval_chips.build_cases(27)
+    assert len(cases) == 25 and cases == eval_chips.build_cases(27)             # same seed, same cases
+    assert all(c["message"] not in c["asked"] and len(set(c["asked"])) == len(c["asked"]) for c in cases)
+    assert {len(c["asked"]) for c in cases} == {5, 15, 29}
+    marks = eval_chips.parse_marks('```json\n{"1": "same", "1_line": "Velai eppo?", "2": "NEW", "2_line": null}\n```')
+    assert marks == {"1": "SAME", "2": "NEW", "1_line": "Velai eppo?", "2_line": None}
+    assert eval_chips.parse_marks("no json") == {} and eval_chips.parse_marks('{"1": "MAYBE", "2": "NEW"}') == {}
