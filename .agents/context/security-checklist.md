@@ -20,7 +20,7 @@ Read this when touching: auth, webhooks (WhatsApp/Instagram/Facebook/Telegram), 
 - **Error responses**: no stack traces or internal Supabase errors surfaced to the frontend; log detail server-side only.
 
 ## Where to look, in order
-1. `graphify query "<question>"` for exact file:line on the subsystem you're touching.
+1. A targeted grep for the exact file:line on the subsystem you're touching.
 2. This file's Hard checks above — confirm against actual code with a targeted grep, don't assume from memory.
 3. `.agents/decisions/log.md` for why a security-relevant call was made a certain way (e.g. RLS migration history).
 4. Full `security-review` skill for generic code-pattern examples (Next.js/TS-flavored — adapt, don't copy verbatim since backend is FastAPI/Python).

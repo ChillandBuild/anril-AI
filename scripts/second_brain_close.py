@@ -348,7 +348,6 @@ def main():
     print(f"\n{total} total issue(s) found. Read-only — nothing was changed.")
     print("Still manual (not automatable): route this session's new knowledge —")
     print("project facts into .agents/*, personal/working-style into your personal memory.")
-    print("If code changed this session, run this project's wiki-refresh target now.")
 
     sys.exit(1 if total else 0)
 

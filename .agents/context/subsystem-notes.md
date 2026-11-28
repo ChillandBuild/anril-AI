@@ -1,8 +1,8 @@
 # Aira AI — Subsystem Notes & Load-Bearing Gotchas
 
-> Operational truths and traps an agent MUST know **before editing a subsystem**. The auto-built
-> `graphify-out/wiki/` describes structure; this file holds the *why* and the *don't-do-X* that
-> structure can't. Migrated from Claude memory 2026-06-24. Keep condensed; link migrations in
+> Operational truths and traps an agent MUST know **before editing a subsystem**. The code
+> shows structure; this file holds the *why* and the *don't-do-X* that
+> code can't. Migrated from Claude memory 2026-06-24. Keep condensed; link migrations in
 > [decisions/log.md](../decisions/log.md).
 
 ## Deployment (Render)

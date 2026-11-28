@@ -28,14 +28,3 @@ pre-push:
     - name: full-typecheck
       run: cd frontend && npx tsc --noEmit
       fail_text: "TypeScript errors block push — fix first"
-
-# Non-blocking reminder: if a merge brought in backend/frontend changes, the
-# architecture wiki may be stale. Just prints — never rebuilds (no surprise cost).
-post-merge:
-  jobs:
-    - name: wiki-stale-reminder
-      # One shell line on purpose: Windows checkouts get CRLF, and a multi-line script
-      # then fails with "syntax error: unexpected end of file". No double quotes in
-      # run commands either: on Windows lefthook wraps the command in "..." unescaped.
-      run: >-
-        git diff-tree -r --name-only ORIG_HEAD HEAD 2>/dev/null | grep -qE '^(backend/|frontend/)' && echo 'ℹ Code changed in this merge — module wiki may be stale. Refresh: make wiki-refresh' || true

@@ -13,11 +13,11 @@
 ---
 
 ## How to Work Efficiently (low context — this is the DEFAULT, no need to be told)
-- The brain is **queried, not loaded**. Never read whole files or the whole wiki "to get context."
-- Lookup order for ANY task: (1) find the exact file:line — `graphify query "<question>"` if `graphify` is installed AND `graphify-out/` exists, otherwise a targeted Grep/Glob for the symbol or UI string (as of 2026-10-13 neither graphify nor `graphify-out/` exists on the Windows machine), (2) the ONE relevant `graphify-out/wiki/<Module>.md` (when present) or `.agents/context/subsystem-notes.md` section, (3) at most 2–3 targeted reads. Full-file reads are the last resort.
+- The brain is **queried, not loaded**. Never read whole files "to get context."
+- Lookup order for ANY task: (1) find the exact file:line with a targeted grep for the symbol, UI string or error text, narrowing in steps (which files mention it → where it is defined → who calls it), (2) the ONE relevant `.agents/context/subsystem-notes.md` section, (3) at most 2–3 targeted reads. Full-file reads are the last resort.
 - Pull ONLY the `.agents/` file the task scope points to (below) — never preload all of them.
-- **Database/schema work:** the wiki is CODE only. Use the migration index in [decisions/log.md](.agents/decisions/log.md) + live Supabase `list_tables`/`execute_sql` — NOT the wiki.
-- This runs automatically for every task; the user does NOT have to say "use the wiki/graph."
+- **Database/schema work:** use the migration index in [decisions/log.md](.agents/decisions/log.md) + live Supabase `list_tables`/`execute_sql`.
+- This runs automatically for every task; the user does NOT have to ask for it.
 
 ## How we work — the sprint (every task, no need to be told)
 
@@ -62,7 +62,7 @@ To prevent context dilution, general invariants and rules have been split into m
     *   Read when: Checking current backlog tasks or reviewing known tech debt (e.g., orphaned tables).
 5.  **Subsystem Notes & Load-Bearing Gotchas**:
     *   Location: [.agents/context/subsystem-notes.md](.agents/context/subsystem-notes.md)
-    *   Read when: Editing broadcasts/delivery, scoring, call evaluation, knowledge RAG, frontend perf, telecalling, chat escalation, or operator console — holds the *why* and the traps the wiki can't.
+    *   Read when: Editing broadcasts/delivery, scoring, call evaluation, knowledge RAG, frontend perf, telecalling, chat escalation, or operator console — holds the *why* and the traps the code can't show.
 6.  **Security & Vulnerability Guidance**:
     *   Location: [.agents/context/security-checklist.md](.agents/context/security-checklist.md)
     *   Read when: Touching auth, webhooks, payments (Razorpay), file uploads, RLS policies, or any route reading `tenant_id`.

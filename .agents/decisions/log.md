@@ -2475,3 +2475,25 @@ Moved by the second-brain audit so the active backlog lists only open work. Text
 - **CSV phones**: every CSV export writes plain phone numbers as `="+91..."` (`reports_common.phone_cell`, frontend `lib/csvPhone.ts`) so Excel doesn't show 9.2E+11. Upload parsers strip to digits and `+`, so these files can be uploaded back.
 - **Inbox list is plain newest-first** (pinned first). `_VIEW_TO_SQL["inbox"]` is now `"inbox"`, not `"needs_you"`; the "Needs you · oldest first" sections and row cues are gone. The Needs you tab (handover page) is unchanged; `home_today` still calls `get_inbox_chats` with `needs_you` for its waiting-first card.
 - **Migration 350** `messages.template_text`: broadcast sends (upload.py + broadcast_executor.py) store the filled-in template wording. `leads.get_lead_messages`/`get_lead` fill older marker-only rows from `message_templates.body_text` with {{1}} = the lead's name. `content` keeps `[Template: name]`; see subsystem-notes for why.
+
+## 2026-11-28 — Graphify and the wiki removed from the workflow; second-brain lookups made cheaper
+
+- **Owner's call (Prem), after measuring.** Session logs from 2026-10-25 to 2026-11-25 (116 sessions, 769 with helper agents):
+  `graphify query` ran 0 times and no wiki page was ever opened, while the wiki was rebuilt in 7 sessions.
+- **Head-to-head test, 3 real questions.** `graphify query` was wrong on both questions it was asked: it matches words
+  against node names, so "where is the whatsapp reply prompt built" matched a doc heading called "Where".
+  `graphify affected "useAuthRole()"` showed 12 of the 102 files grep found; its list is cut at 65 rows with no notice.
+  `graphify explain` and `graphify path` were right, but need the exact function name, which grep finds first.
+- **Wiki pages hold names and file paths only** (no line numbers, no explanation). Same opt-out question: 680 chars by grep,
+  3,391 by the wiki page, and grep is still needed afterwards.
+- **Removed:** the lookup rule in CLAUDE.md, AGENTS.md and security-checklist.md (now: targeted grep first);
+  the "WIKI STALE" Stop hook; the lefthook post-merge reminder; `make wiki` / `make wiki-refresh`; `scripts/build_wiki.py`;
+  the wiki-refresh line in `second_brain_close.py`; the local `graphify-out/` folder (602 MB). The `.gitignore` line stays.
+- **Not removed:** the graphify CLI on the Mac, and the global `wiki` / `second-brain-close` skills in `~/.claude/skills/`.
+  The close skill skips its wiki step when `graphify-out/manifest.json` is missing.
+- **To bring it back:** revert this commit, then `graphify update . --force` (AST only, no LLM).
+- **Same day, second-brain lookups:** search hits must be cut at 200 chars (rule in CLAUDE.md; replaying past searches
+  showed 56–65% less context); 174 dated title lines in this file became `## ` headings (largest section 193,869 → 15,933 chars);
+  the migration index was extended to 350; `second_brain_close.py` gained a "Decision log health" check
+  (section over 20,000 chars, or a committed migration missing from the index).
+- **Rule for this file from now on:** every entry starts with its own `## YYYY-MM-DD — title` line. Keep lines short.

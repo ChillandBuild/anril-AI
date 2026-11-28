@@ -1,6 +1,5 @@
-# Graphify knowledge graph (generated, including the wiki — regenerable from code via `make wiki-refresh`).
-# Kept local-only so the ~130-file wiki refresh after every code change never pollutes git history.
-# A fresh clone rebuilds it with one `/wiki` run.
+# Graphify output. The tool was removed from the workflow on 2026-11-28 (see .agents/decisions/log.md);
+# the ignore stays so a stray local build never gets committed.
 graphify-out/
 
 # Environment variables

@@ -8,14 +8,14 @@
 ---
 
 ## How to Work Efficiently (low context — this is the DEFAULT, no need to be told)
-- The brain is **queried, not loaded**. Never read whole files or the whole wiki "to get context."
-- Lookup order for ANY task: (1) find the exact file:line — `graphify query "<question>"` if `graphify` is installed AND `graphify-out/` exists, otherwise a targeted Grep/Glob for the symbol or UI string (as of 2026-10-13 neither graphify nor `graphify-out/` exists on the Windows machine), (2) the ONE relevant `graphify-out/wiki/<Module>.md` (when present) or `.agents/context/subsystem-notes.md` section, (3) at most 2–3 targeted reads. Full-file reads are the last resort.
+- The brain is **queried, not loaded**. Never read whole files "to get context."
+- Lookup order for ANY task: (1) find the exact file:line with a targeted grep for the symbol, UI string or error text, narrowing in steps (which files mention it → where it is defined → who calls it), (2) the ONE relevant `.agents/context/subsystem-notes.md` section, (3) at most 2–3 targeted reads. Full-file reads are the last resort.
 - Pull ONLY the `.agents/` file the task scope points to (below) — never preload all of them.
 - Searching `.agents/` files: lines there are whole paragraphs, so never print raw hits (measured 2026-11-28: cutting hits saves 56–65%).
   Step 1: `grep -n -i "<word>" <file> | cut -c1-200 | head -40`. Step 2: `sed -n '<start>,<end>p' <file>` for the ONE section that matters.
   To list log sections, filter by month: `grep -n "^## 2026-11" .agents/decisions/log.md | cut -c1-80` (the full heading list is ~26k chars).
-- **Database/schema work:** the wiki is CODE only. Use the migration index in [decisions/log.md](.agents/decisions/log.md) + live Supabase `list_tables`/`execute_sql` — NOT the wiki.
-- This runs automatically for every task; the user does NOT have to say "use the wiki/graph."
+- **Database/schema work:** use the migration index in [decisions/log.md](.agents/decisions/log.md) + live Supabase `list_tables`/`execute_sql`.
+- This runs automatically for every task; the user does NOT have to ask for it.
 
 ## How we work — the sprint (every task, no need to be told)
 
@@ -54,7 +54,7 @@ Read ONLY the file your task's scope points to:
 2. [.agents/context/stack-and-rules.md](.agents/context/stack-and-rules.md) — DB calls, WhatsApp/TeleCMI webhooks, outbound call routing, RLS, tech stack, file map, running tests.
 3. [.agents/decisions/log.md](.agents/decisions/log.md) — why a module was dropped (e.g. Bot Flow Builder), migration history, schema structure.
 4. [.agents/projects/active-backlog.md](.agents/projects/active-backlog.md) — backlog tasks, known tech debt (e.g. orphaned tables).
-5. [.agents/context/subsystem-notes.md](.agents/context/subsystem-notes.md) — broadcasts/delivery, scoring, call evaluation, knowledge RAG, frontend perf, telecalling, chat escalation, operator console: the *why* and the traps the wiki can't hold.
+5. [.agents/context/subsystem-notes.md](.agents/context/subsystem-notes.md) — broadcasts/delivery, scoring, call evaluation, knowledge RAG, frontend perf, telecalling, chat escalation, operator console: the *why* and the traps the code can't show.
 6. [.agents/context/security-checklist.md](.agents/context/security-checklist.md) — auth, webhooks, payments (Razorpay), file uploads, RLS, any route reading `tenant_id`. New auth/webhook/payment code or RLS changes → run `/security-review` on the diff.
 7. [docs/whatsapp-master-prompt.md](docs/whatsapp-master-prompt.md) — `_build_base_prompt()` / `ai_reply.py` prompt assembly, or the `ai_prompts` `master` row. Canonical text; explains why the per-channel rows (`whatsapp_reply` etc.) are dead weight.
 
