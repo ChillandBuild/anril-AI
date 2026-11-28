@@ -13,12 +13,15 @@ read_format -> bubbles ["Karthik, unga 7th house la Guru irukku.", "Porutham paa
 chips ["Kalyanam eppo nadakkum?", "Velai eppadi irukkum?"], button "porutham", tag "counted".
 finalize then applies the code-side rules (a failed call, a Strict hand-off, no chips when nothing is counted).
 
+A when answer may carry a [window: ...] line (prompt.WINDOW_RULE): place_window puts it first, the engine calls it.
+
 Chips: the model writes up to CHIP_IDEAS ideas and the engine shows CHIPS of them, the first that repeat no
 question the person already asked (chip_repeats.py, by meaning). Those questions ride on ReplyFormat.asked
 (set by the engine, never by the request) and are NOT listed in the prompt: listed, flash-lite copied them
 back as chips (41% of 196 ideas repeated one, against 24% of 184 unlisted; chips eval, 28 Nov 2026).
 """
 import re
+import unicodedata
 from typing import Annotated, NamedTuple
 
 from pydantic import (BaseModel, ConfigDict, Field, PrivateAttr, StringConstraints, field_validator,
@@ -36,6 +39,7 @@ CHIP_IDEAS = 4      # ideas the model writes, so a repeat dropped by code still 
 ASKED_DAYS = 7      # a chip never repeats what the person asked in this many days
 ASKED_MAX = 30      # the newest of those questions, checked against the chips
 ASKED_CHARS = 120   # each cut to this (a long message is no chip anyone would repeat word for word)
+WINDOW_CHARS = 200  # the [window: ...] line of a when answer (prompt.WINDOW_RULE), cut to this
 
 ButtonId = Annotated[str, StringConstraints(min_length=1, max_length=32, pattern=r"^[a-z][a-z0-9_]*$")]
 When = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
@@ -131,16 +135,52 @@ def _tag_re(name: str) -> re.Pattern:
     return re.compile(r"[ \t]*\[\s*" + name + r"\s*:([^\]\n]*)\][ \t]*", re.IGNORECASE)
 
 
-_TAG, _BUTTON, _CHIPS = _tag_re("tag"), _tag_re("button"), _tag_re("chips")
+_TAG, _BUTTON, _CHIPS, _WINDOW = _tag_re("tag"), _tag_re("button"), _tag_re("chips"), _tag_re("window")
 _SEPARATOR = re.compile(r"^[ \t]*-{3,}[ \t]*$", re.MULTILINE)
 _BLANK_LINE = re.compile(r"\n[ \t]*\n")
 
 
 def strip_tags(text: str) -> str:
     """'Vanakkam [button: x] Karthik.\\n[chips: a | b]' -> 'Vanakkam Karthik.' Each line stripped."""
-    for pattern in (_TAG, _BUTTON, _CHIPS):
+    for pattern in (_TAG, _BUTTON, _CHIPS, _WINDOW):
         text = pattern.sub(" ", text or "")
     return "\n".join(line.strip() for line in text.splitlines()).strip()
+
+
+def copy_key(text: str) -> str:
+    """'kalyanam  eppo ?' and 'Kalyanam eppo?' -> one key: no case, spaces or punctuation. Letters and marks
+    stay, so Tamil vowel signs count: 'வேலை எப்படி?' (job) and 'வலி எப்படி?' (pain) stay apart."""
+    text = unicodedata.normalize("NFC", (text or "").casefold())   # one form for Tamil vowel signs
+    return "".join(c for c in text if unicodedata.category(c)[0] not in "PZS")
+
+
+def place_window(text: str | None) -> str | None:
+    """A when answer's [window: ...] slot (prompt.WINDOW_RULE) becomes its first line, wherever the model wrote it:
+        '[tag: counted]\n4ம் அதிபதி சூரியன்...\n[window: செவ்வாய் தசை - சுக்கிர புத்தி, மே 2027: வாய்ப்பு அதிகம்]'
+        -> '[tag: counted]\nசெவ்வாய் தசை - சுக்கிர புத்தி, மே 2027: வாய்ப்பு அதிகம்\n4ம் அதிபதி சூரியன்...'
+    Only the first non-empty window is used ("none" counts as empty), cut to WINDOW_CHARS; a line of the reply that
+    copies it word for word is dropped. No window: the text without the tag. Why code places it: told to answer
+    first, flash-lite opened with the house reason anyway (3 of 10 timing answers, 28 Nov 2026)."""
+    if not text or not _WINDOW.search(text):
+        return text
+    window, lines = None, []
+    for line in text.split("\n"):
+        values = _values(_WINDOW, line)
+        if values:
+            for value in values:
+                value = " ".join(value.split())
+                if window is None and value and value.casefold() != "none":
+                    window = value[:WINDOW_CHARS]
+            line = _WINDOW.sub(" ", line).strip()
+            if not line:
+                continue
+        lines.append(line)
+    if window is None:
+        return "\n".join(lines)
+    key = copy_key(window)
+    lines = [line for line in lines if copy_key(line) != key]
+    first = next((i for i, line in enumerate(lines) if strip_tags(line) and not _SEPARATOR.match(line)), len(lines))
+    return "\n".join(lines[:first] + [window] + lines[first:])
 
 
 def _values(pattern: re.Pattern, text: str) -> list[str]:

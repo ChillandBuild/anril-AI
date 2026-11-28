@@ -21,12 +21,11 @@ import asyncio
 import logging
 import math
 import re
-import unicodedata
 from array import array
 from collections import OrderedDict
 
 from app.companion import memory_embed
-from app.companion.reply_format import CHIPS
+from app.companion.reply_format import CHIPS, copy_key as _copy_key
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ CACHE_MAX = 6000     # (business, text) vectors kept, the newest: ~3 KB each, ~2
 # "Will it be delayed" (தாமதம், thaamadham) is a when (Prem, 27 Nov 2026). No \b next to Tamil letters:
 # Tamil vowel signs are not word characters to Python, so a boundary there falls inside a word.
 _KINDS = {
-    "when": r"எப்ப(?!டி)|எந்த வருஷ|எந்த வருட|எந்த மாச|தாமத|(?<!எதிர்)காலம்|நேரம்|\by?eppo|\by?epo\b|\beppa\b"
+    "when": r"எப்ப(?!டி)|எந்த வருஷ|எந்த வருட|எந்த மாச|தாமத|(?<!எதிர்)காலம்|நேரம்|\by?eppo|\by?epo|\beppa\b"
             r"|\bwhen\b|\bsoon\b|which (year|month)|thaamadh|thamadh|\bdelay|\blate\b|\btime\b|\bperiod\b",
     "how": r"எப்படி|\beppadi|\bepdi|\byepadi|\beppdi|\bhow\b",
     "whether": r"ா\s*[?!.]*\s*$|(uma|umaa|lama|laama|kka|kkaa|ruka|rukka)\s*[?!.]*\s*$"
@@ -60,13 +59,6 @@ def kinds(question: str) -> set[str]:
     """The kinds of ask in a question: kinds("Kalyanam thaamadham aaguma?") -> {"when", "whether"}."""
     text = " ".join((question or "").split())
     return {kind for kind, pattern in _KIND_RES.items() if pattern.search(text)}
-
-
-def _copy_key(text: str) -> str:
-    """'kalyanam  eppo ?' and 'Kalyanam eppo?' -> one key: no case, spaces or punctuation. Letters and marks
-    stay, so Tamil vowel signs count: 'வேலை எப்படி?' (job) and 'வலி எப்படி?' (pain) stay apart."""
-    text = unicodedata.normalize("NFC", (text or "").casefold())   # one form for Tamil vowel signs
-    return "".join(c for c in text if unicodedata.category(c)[0] not in "PZS")
 
 
 def _cos(a, b) -> float:

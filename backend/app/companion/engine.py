@@ -37,7 +37,8 @@ from app.companion.kb import search as kb_search
 from app.companion.kb.types import KbResult
 from app.companion.prompt import (build_messages, hide_pasted_chart, label_reply, parse_mood, parse_used, said_talk,
                                   split_working, who_block, with_reply_language)
-from app.companion.reply_format import ASKED_DAYS, ASKED_MAX, ReplyFormat, finalize, read_format, strip_tags
+from app.companion.reply_format import (ASKED_DAYS, ASKED_MAX, ReplyFormat, finalize, place_window, read_format,
+                                        strip_tags)
 from app.services import ai_reply
 
 logger = logging.getLogger(__name__)
@@ -699,7 +700,7 @@ async def _chart_guard(companion: dict, tenant_id: str, prompt: list[dict], raw:
 def _visible(raw: str | None) -> str:
     """The reply text the person would see: no working block, no [used]/[mood] or reply_format tags."""
     text, _ = parse_used(split_working(raw)[0] or "", 0)
-    return strip_tags(parse_mood(text, "calm")[0])
+    return strip_tags(place_window(parse_mood(text, "calm")[0]) or "")   # the window line is checked too
 
 
 def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None, companion: dict,
@@ -721,7 +722,7 @@ def _read_reply(raw: str | None, previous_mood: str, kb: KbResult | None, compan
         ov.working = working
     text, used = parse_used(raw or "", len(kb.passages) if kb else 0)
     text, mood = parse_mood(text, previous_mood)
-    text = text.strip()
+    text = (place_window(text) or "").strip()   # a when answer's [window: ...] line goes first
     if not text:
         return fallback_line(line_language(companion)), previous_mood, None, []
     basis, sources = label_reply(kb, used)
@@ -751,7 +752,7 @@ def _has_text(raw: str | None, with_format: bool = False) -> bool:
     _read_reply answers with the fallback line. with_format: the [tag:] [button:] [chips:] tags of a
     reply_format count as tags too, so '[mood: calm] [tag: counted] [chips: none]' is nothing to show."""
     text, _ = parse_used(split_working(raw)[0] or "", 0)
-    text = parse_mood(text, "calm")[0]
+    text = place_window(parse_mood(text, "calm")[0]) or ""
     return bool((strip_tags(text) if with_format else text).strip())
 
 
