@@ -1169,6 +1169,11 @@ async def dial_check(
 ):
     """Manual Dial "Before you call": read-only. Same rules initiate_call enforces, shown before the call."""
     _require_dialer_permission(ctx)
+    # The Supabase reads are synchronous: run them off the event loop so other requests keep moving.
+    return await asyncio.to_thread(_dial_check_sync, phone, caller_id, ctx)
+
+
+def _dial_check_sync(phone: str, caller_id: str | None, ctx: dict) -> dict:
     from app.services.call_rules import (
         calls_made_today, get_rules, ist_day_start_utc, now_ist, phone_mask_for,
     )

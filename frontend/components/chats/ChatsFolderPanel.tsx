@@ -449,7 +449,7 @@ export function ChatsFolderPanel({
             </p>
           </div>
         </div>
-        <aside className="flex min-w-0 flex-col gap-3">
+        <aside className="order-first flex min-w-0 flex-col gap-3 xl:order-none">
           <BlockedSide canReply={canReply} canExport={canExport} />
           <BlockedVsStop />
         </aside>

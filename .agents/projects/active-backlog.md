@@ -58,6 +58,11 @@ The 36 partly built ones went on a decision page (https://claude.ai/artifact/9b9
 - **Not decided:** P11 "Remind all" on Home's Still to collect (each reminder is a paid WhatsApp message).
 - **Not yet shown to anyone:** the 31 items that are not built at all and not tracked (setup steps 4 and "All connected", first-day Home, search chips, "AI is handling N" note, customer page + New bill / Likes, Inbound empty state, Couldn't answer Skip / asker / "AI said", Meta Ads "Why did this happen?", Instant forms Booked + call-back card, Reach steps 3 / 4 / Sent list, 8 Commerce items incl. the Catalogue › Labels 400, Call IQ Scripts / Scheduled calls / Assignment log, Settings home summaries, Automations results, WhatsApp-down page, "Bigger buttons on phone", offline laptop mode).
 
+### v9.2 leftovers wave 1 (P88 dial checks, P34 Excel update, P19 Archived & blocked) — follow-ups (2026-11-28)
+- A telecaller with hidden numbers sees a customer's NAME in Manual Dial › Dialled today after actually dialling the number (`/calls/recent` returns `leads(name)`); typing digits alone reveals nothing. Decide whether callers with hidden numbers should see names there.
+- `find_lead_for_dial` (services/dial_check.py) doesn't skip soft-deleted leads (`deleted_at`), so a deleted lead can still block or be linked.
+- Excel Update mode: Type stays editable though Meta keeps the old type (row note explains); the Send label can be off by one after a failed Skip recheck.
+
 ### v9.2 Batches N, O, P — shipped 2026-11-23 (migrations 326, 329, 330 live)
 - Migration 330 (Courses tables): its objects went live on 2026-11-23, but apply_migration was declined each time,
   so the ledger row was inserted by hand (version 20261123081813) after checking every table, index, trigger and RLS.

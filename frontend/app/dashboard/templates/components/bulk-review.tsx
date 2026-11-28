@@ -140,7 +140,7 @@ function FieldError({ texts }: { texts: string[] }) {
 }
 
 const inputCls = (bad: boolean) =>
-  `w-full rounded-xl border bg-white px-3 py-2 text-[13.5px] text-ink placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 ${
+  `w-full rounded-xl border bg-white px-3 py-2 text-[13.5px] text-ink placeholder:text-[#94a3b8] focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:bg-surface-mid disabled:opacity-60 ${
     bad ? "border-red-300 focus:ring-red-100" : "border-[#e2e8f0] focus:border-primary-300 focus:ring-primary-100"
   }`;
 

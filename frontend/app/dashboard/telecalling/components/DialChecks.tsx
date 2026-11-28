@@ -43,9 +43,9 @@ export default function DialChecks({
     <div className={`w-full space-y-3 ${className}`}>
       {showChecks && (
         <section className="rounded-2xl border border-[#e2e8f0] bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2">
-            <h3 className="min-w-0 flex-1 truncate font-label text-[10px] font-extrabold uppercase tracking-widest text-[#94a3b8]">
-              Before you call · <span className="text-[#13284A]">{customer ? customer.name || formatPhone(customer.phone) : "New number"}</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h3 className="w-full min-w-0 font-label text-[10px] font-extrabold uppercase tracking-widest text-[#94a3b8] md:w-auto md:flex-1 md:truncate">
+              Before you call · <span className="text-[#13284A]">{loading ? "Checking…" : customer ? customer.name || formatPhone(customer.phone) : "New number"}</span>
             </h3>
             {customer?.segment && SEGMENT_WORD[customer.segment] && (
               <span className="shrink-0 rounded-full border border-[#e2e8f0] bg-[#f8fafc] px-2 py-0.5 font-label text-[9px] font-bold text-[#475569]">
@@ -72,8 +72,14 @@ export default function DialChecks({
                       {MARK[row.state]}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="font-body text-xs font-semibold text-[#13284A]">{row.label}</p>
-                      {row.detail && <p className="font-label text-[10px] text-[#94a3b8] break-words">{row.detail}</p>}
+                      {row.state === "blocked" && row.detail ? (
+                        <p className="font-body text-xs font-semibold text-[#13284A] break-words">{row.detail}</p>
+                      ) : (
+                        <>
+                          <p className="font-body text-xs font-semibold text-[#13284A]">{row.label}</p>
+                          {row.detail && <p className="font-label text-[10px] text-[#94a3b8] break-words">{row.detail}</p>}
+                        </>
+                      )}
                     </div>
                   </li>
                 ))}
