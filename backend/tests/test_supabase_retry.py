@@ -78,3 +78,39 @@ def test_fast_query_is_not_logged(caplog):
     with caplog.at_level(logging.WARNING, logger="app.db.supabase"):
         _request(_ScriptedTransport([]))
     assert "Slow Supabase" not in caplog.text
+
+
+def _pool(session: httpx.Client):
+    transport = session._transport
+    return getattr(transport, "_inner", transport)._pool
+
+
+def test_no_supabase_client_shares_an_http2_connection(monkeypatch):
+    """Many threads use these clients at once. httpcore's sync HTTP/2 connection hands out
+    stream ids and packs headers without a lock, so two threads corrupt the connection and
+    Supabase's edge cuts it: every request on it dies with "Server disconnected" (about 20
+    cuts an hour on 2026-11-27). An HTTP/1.1 pool gives each request its own connection."""
+    from app.db import supabase as supabase_db
+
+    monkeypatch.setattr(supabase_db, "_client", None)
+    monkeypatch.setattr(supabase_db.settings, "supabase_url", "https://example.supabase.co")
+    monkeypatch.setattr(supabase_db.settings, "supabase_service_key", "sb_secret_dummy")
+    client = supabase_db.get_supabase()
+
+    sessions = {
+        "postgrest": client.postgrest.session,
+        "auth": client.auth._http_client,
+        "auth.admin": client.auth.admin._http_client,
+        "storage": client.storage.session,
+    }
+    assert {name: _pool(session)._http2 for name, session in sessions.items()} == dict.fromkeys(sessions, False)
+
+
+def test_database_pool_keeps_its_retry_and_timeout_after_the_switch():
+    client = MagicMock()
+    client.postgrest.session = httpx.Client(base_url="https://example.test", timeout=120)
+    _wrap_postgrest_session(client)
+    session = client.postgrest.session
+    assert isinstance(session._transport, _RetryTransport)
+    assert session.timeout.read == 10
+    assert str(session.base_url) == "https://example.test"

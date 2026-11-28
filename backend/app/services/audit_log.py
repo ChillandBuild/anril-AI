@@ -1,8 +1,16 @@
 import logging
+import time
+import uuid
 from collections.abc import Mapping
 from typing import Any
 
+from app.db.supabase import _TRANSIENT as _DROPPED
+
 logger = logging.getLogger(__name__)
+
+# How often a write cut off by a dropped connection is sent again, and the first wait.
+_RETRIES = 2
+_RETRY_WAIT_SECONDS = 0.25
 
 _SENSITIVE_MARKERS = ("password", "token", "secret", "key", "credential")
 _MASK = "********"
@@ -34,9 +42,14 @@ def write_audit_event(
     target_id: str | None = None,
     metadata: dict | None = None,
 ) -> None:
-    """Append one audit row. Raises when the insert fails: for callers that must not go on
-    without the row (Claude Access withholds a tool's answer if its row cannot be written)."""
-    db.table("app_audit_logs").insert({
+    """Append one audit row. Raises when the write fails: for callers that must not go on
+    without the row (Claude Access withholds a tool's answer if its row cannot be written).
+
+    The row's id is chosen here, so a write cut off by a dropped connection can be sent again
+    without writing twice: the first try may already have been saved, and the retry saves the
+    id only if it is not there yet."""
+    row = {
+        "id": str(uuid.uuid4()),
         "tenant_id": tenant_id,
         "actor_user_id": actor_user_id,
         "actor_role": actor_role,
@@ -44,7 +57,20 @@ def write_audit_event(
         "target_type": target_type,
         "target_id": target_id,
         "metadata": _sanitize(metadata or {}),
-    }).execute()
+    }
+    try:
+        db.table("app_audit_logs").insert(row).execute()
+        return
+    except _DROPPED as exc:
+        dropped = exc
+    for attempt in range(_RETRIES):
+        time.sleep(_RETRY_WAIT_SECONDS * (2 ** attempt))
+        try:
+            db.table("app_audit_logs").upsert(row, on_conflict="id", ignore_duplicates=True).execute()
+            return
+        except _DROPPED as exc:
+            dropped = exc
+    raise dropped
 
 
 def record_audit_event(

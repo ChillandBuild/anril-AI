@@ -10,11 +10,18 @@ logger = logging.getLogger(__name__)
 
 _client: Client | None = None
 
-# PostgREST's session is HTTP/2 (postgrest sets http2=True), so every query in
-# the process shares one connection to Supabase's edge. When that edge recycles
-# the connection, whichever request is holding it dies with
-# `RemoteProtocolError: Server disconnected`. postgrest's own send_with_retry
-# only covers HTTP 520/503 and httpx `NetworkError` — `RemoteProtocolError` is a
+# Every Supabase client here is used by many threads at once (route handlers, webhooks,
+# scheduler jobs). supabase-py turns HTTP/2 on for all of them, which puts every request on ONE
+# connection, and httpcore's sync HTTP/2 connection is not thread-safe: it takes the next stream
+# id and packs the headers without a lock. Two threads then send the same stream id or scramble
+# the header compression, Supabase's edge answers GOAWAY PROTOCOL_ERROR or just hangs up, and
+# every request on that connection dies with `RemoteProtocolError: Server disconnected`
+# (about 20 cuts an hour on 2026-11-27; with 8 threads, 61 failures in 5,600 requests on
+# HTTP/2 against 0 in 3,200 on an HTTP/1.1 pool). So these clients speak HTTP/1.1: each
+# request in flight gets its own pooled connection.
+#
+# A pooled connection can still close just as it is reused. postgrest's own send_with_retry
+# only covers HTTP 520/503 and httpx `NetworkError`; `RemoteProtocolError` is a
 # `ProtocolError`, so it escapes and surfaces as a 500 (seen on
 # GET /api/v1/subscriptions/me, 2026-08-28). Retrying here fixes every call site
 # at once, since nothing in the app talks to postgrest directly.
@@ -27,8 +34,7 @@ _REPLAYABLE = frozenset({"GET", "HEAD", "OPTIONS"})
 # postgrest's default is 120 s. Every app query finishes in under 8 s on the
 # database (pg_stat_statements, 2026-10-30), but a stalled connection held calls
 # for 35-45 s on 24 and 26 Oct and AstroTamil's partner sends timed out. A read
-# timeout also marks the HTTP/2 connection broken, so the next query opens a
-# fresh one instead of queueing on the dead one.
+# timeout closes that one connection; the next query takes another from the pool.
 _TIMEOUT = httpx.Timeout(10.0)
 # Queries slower than this are logged with the table and the route that ran them.
 _SLOW_SECONDS = 2.0
@@ -99,8 +105,16 @@ def _wrap_postgrest_session(client: Client) -> None:
         headers=old.headers,
         timeout=_TIMEOUT,
         follow_redirects=True,
-        transport=_RetryTransport(httpx.HTTPTransport(http2=True, limits=limits)),
+        transport=_RetryTransport(httpx.HTTPTransport(http2=False, limits=limits)),
     )
+    old.close()
+
+
+def _use_http1(session: httpx.Client) -> None:
+    """Swap a client's HTTP/2 transport for an HTTP/1.1 pool, keeping the client object:
+    auth and auth.admin share one, and storage hands its own to every bucket."""
+    old = session._transport
+    session._transport = httpx.HTTPTransport(http2=False)
     old.close()
 
 
@@ -196,8 +210,18 @@ class _ReadOnlyClient:
 def get_supabase() -> Client:
     global _client
     if _client is None:
-        _client = create_client(settings.supabase_url, settings.supabase_service_key)
-        _wrap_postgrest_session(_client)
+        # Built in a local and published last: another thread must never pick up a client whose
+        # sessions are still being swapped (the old ones get closed under it).
+        client = create_client(settings.supabase_url, settings.supabase_service_key)
+        _wrap_postgrest_session(client)
+        try:
+            _use_http1(client.auth._http_client)
+            _use_http1(client.storage.session)
+        except Exception:
+            # These reach into supabase-py and httpx internals. If a new version moves them, keep
+            # serving (on HTTP/2, as before) and let test_supabase_retry.py fail in CI.
+            logger.exception("Supabase auth/storage clients left on HTTP/2: could not switch them to HTTP/1.1")
+        _client = client
     if read_only.get():
         return _ReadOnlyClient(_client)  # type: ignore[return-value]
     return _client
